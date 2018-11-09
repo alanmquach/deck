@@ -2,72 +2,37 @@ import * as React from 'react';
 
 import { IStageConfigProps } from 'core/pipeline';
 import { SpelNumberInput } from 'core/widgets/spelText/SpelNumberInput';
-import { IStage } from 'core/domain';
 import { StageConfigField } from '../core/stageConfigField/StageConfigField';
 
 export interface IWaitStageConfigState {
   enableCustomSkipWaitText: boolean;
-  waitTime: number | string;
-  skipWaitText: string;
 }
 
 export const DEFAULT_SKIP_WAIT_TEXT = 'The pipeline will proceed immediately, marking this stage completed.';
 
 export class WaitStageConfig extends React.Component<IStageConfigProps, IWaitStageConfigState> {
-  public static getDerivedStateFromProps(
-    props: IStageConfigProps,
-    state: IWaitStageConfigState,
-  ): IWaitStageConfigState {
-    const { stage } = props;
-    if (!stage.waitTime) {
-      stage.waitTime = 30;
-    }
-    return {
-      enableCustomSkipWaitText: !!stage.skipWaitText || state.enableCustomSkipWaitText,
-      waitTime: stage.waitTime,
-      skipWaitText: stage.skipWaitText,
-    };
-  }
-
   constructor(props: IStageConfigProps) {
     super(props);
-    this.state = this.getState(props.stage);
-  }
-
-  private getState(stage: IStage): IWaitStageConfigState {
-    if (!stage.waitTime) {
-      stage.waitTime = 30;
-    }
-    return {
-      enableCustomSkipWaitText: !!stage.skipWaitText,
-      waitTime: stage.waitTime,
-      skipWaitText: stage.skipWaitText,
-    };
+    this.state = { enableCustomSkipWaitText: !!props.stage.skipWaitText };
   }
 
   private updateWaitTime = (waitTime: number | string) => {
-    this.props.stage.waitTime = waitTime;
-    this.setState({ waitTime });
-    this.props.stageFieldUpdated();
+    this.props.updateStageField({ waitTime });
   };
 
   private toggleCustomSkipWaitText = (event: React.ChangeEvent<HTMLInputElement>): void => {
-    this.props.stage.skipWaitText = undefined;
-    if (!event.target.checked) {
-      this.props.stageFieldUpdated();
-    }
-    this.setState({ enableCustomSkipWaitText: event.target.checked, skipWaitText: undefined });
+    this.setState({ enableCustomSkipWaitText: event.target.checked });
+    this.props.updateStageField({ skipWaitText: undefined });
   };
 
   private customSkipWaitTextChanged = (event: React.ChangeEvent<HTMLTextAreaElement>): void => {
     const skipWaitText = event.target.value || undefined;
-    this.props.stage.skipWaitText = skipWaitText;
-    this.setState({ skipWaitText });
-    this.props.stageFieldUpdated();
+    this.props.updateStageField({ skipWaitText });
   };
 
   public render() {
-    const { waitTime, enableCustomSkipWaitText, skipWaitText } = this.state;
+    const { enableCustomSkipWaitText } = this.state;
+    const { waitTime, skipWaitText } = this.props.stage;
     return (
       <div className="form-horizontal">
         <StageConfigField label="Wait time (seconds)" fieldColumns={6}>
