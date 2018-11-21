@@ -201,6 +201,7 @@ module.exports = angular
               stage: $scope.stage,
               component: config.component,
             };
+            console.log('rednering something');
             ReactDOM.render(React.createElement(StageConfigWrapper, props), stageDetailsNode);
           } else {
             const template = $templateCache.get(config.templateUrl);

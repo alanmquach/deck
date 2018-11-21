@@ -93,6 +93,7 @@ export class TitusRunJobStageConfig extends React.Component<IStageConfigProps, I
     } else {
       regions = [];
     }
+    console.log('setting state in updateRegions');
     this.setState({ regions });
   }
 
@@ -123,6 +124,7 @@ export class TitusRunJobStageConfig extends React.Component<IStageConfigProps, I
   };
 
   public componentDidMount() {
+    console.log('didMount');
     const { stage } = this.props;
     AccountService.getCredentialsKeyedByAccount('titus').then(credentialsKeyedByAccount => {
       this.credentialsKeyedByAccount = credentialsKeyedByAccount;
@@ -131,8 +133,13 @@ export class TitusRunJobStageConfig extends React.Component<IStageConfigProps, I
 
       this.setRegistry(stage.credentials);
       this.updateRegions(stage.credentials);
+      console.log('setting state in componentDidMount');
       this.setState({ credentials, loaded: true });
     });
+  }
+
+  public componentWillUnmount() {
+    console.log('unmounting... wft?');
   }
 
   private mapChanged = (key: string, values: { [key: string]: string }) => {
