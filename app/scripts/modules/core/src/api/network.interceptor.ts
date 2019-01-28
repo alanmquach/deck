@@ -11,6 +11,7 @@ import {
   module,
 } from 'angular';
 import { Dictionary } from 'lodash';
+import { $log } from 'ngimport';
 
 /**
  * Handles two scenarios:
@@ -52,6 +53,19 @@ export class NetworkInterceptor implements IHttpInterceptor {
   private removeFromQueue(config: IRequestConfig): void {
     delete this.retryQueue[config.url];
   }
+
+  public response = <T>(response: IHttpPromiseCallbackArg<T>): IPromise<T> => {
+    const { config } = response;
+    const blacklist: string[] = ['/serverGroupManagers', '/clusters', '/loadBalancers', '/serverGroups'];
+    if (blacklist.some(x => !!config.url.match(x))) {
+      $log.error(`BLOCK - ${config.url}`);
+      return this.$q.reject({ ...response, status: 429 });
+    }
+    $log.error(`ALLOW - ${config.url}`);
+    // Optionally inject a mock response a la:
+    // return this.$q.resolve({ ...response, data: mockData } as unknown as T);
+    return this.$q.resolve(response as T);
+  };
 
   // see http://www.couchcoder.com/angular-1-interceptors-using-typescript for more details on why we need to do this
   // in essence, we need to do this because "the ng1 implementation of interceptors only keeps references to the handler
