@@ -4,7 +4,14 @@ import { FieldArray, FormikErrors, FormikProps, getIn } from 'formik';
 import { IAccount } from 'core/account';
 import { IProject, IProjectCluster } from 'core/domain';
 import { IWizardPageComponent } from 'core/modal';
-import { FormikFormField, ReactSelectInput, TextInput } from 'core/presentation';
+import {
+  FormikFormField,
+  ReactSelectInput,
+  TextInput,
+  buildValidators,
+  Validators,
+  IArrayItemValidator,
+} from 'core/presentation';
 import { NgReact } from 'core/reactShims';
 
 import { FormikApplicationsPicker } from './FormikApplicationsPicker';
@@ -14,35 +21,26 @@ export interface IClustersProps {
 }
 
 export class Clusters extends React.Component<IClustersProps> implements IWizardPageComponent<IProject> {
-  public validate = (value: IProject): FormikErrors<IProject> => {
-    const applications = value.config.applications || [];
-    if (value.config.clusters && value.config.clusters.length) {
-      const clusterErrors = value.config.clusters.map(cluster => {
-        const errors: any = {};
-        if (!cluster.account) {
-          errors.account = 'Account must be specified';
-        }
+  public validate = (values: IProject): FormikErrors<IProject> => {
+    const { oneOf } = Validators;
 
-        const apps = cluster.applications || [];
-        const applicationErrors = apps.map(app => !applications.includes(app) && 'This app is not in the project');
+    const builder = buildValidators(values);
+    const { arrayForEach } = builder;
 
-        if (applicationErrors.some(val => !!val)) {
-          errors.applications = applicationErrors;
-        }
+    const applicationValidator: IArrayItemValidator = applicationBuilder => {
+      applicationBuilder
+        .item('Application')
+        .optional([oneOf(values.config.applications, 'This app is not in the project')]);
+    };
 
-        return Object.keys(errors).length ? errors : null;
-      });
+    const clusterValidator: IArrayItemValidator = clusterBuilder => {
+      clusterBuilder.field('account', 'Account').required([], 'Account must be specified');
+      clusterBuilder.field('applications', 'Application').optional([arrayForEach(applicationValidator)]);
+    };
 
-      if (clusterErrors.some(val => !!val)) {
-        return {
-          config: {
-            clusters: clusterErrors,
-          },
-        } as any;
-      }
-    }
+    builder.field('config.clusters', 'Clusters').optional([arrayForEach(clusterValidator)]);
 
-    return {};
+    return builder.result();
   };
 
   private toggleAllApps(formik: FormikProps<any>, path: string) {

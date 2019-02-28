@@ -24,8 +24,8 @@ interface INamedValidatorResult {
 }
 
 interface IValidatableField {
-  required: (validators?: IValidator[]) => undefined | Promise<INamedValidatorResult>;
-  optional: (validators?: IValidator[]) => undefined | Promise<INamedValidatorResult>;
+  required: (validators?: IValidator[], message?: string) => undefined | Promise<INamedValidatorResult>;
+  optional: (validators?: IValidator[], message?: string) => undefined | Promise<INamedValidatorResult>;
 }
 
 interface IArrayItemValidationBuilder extends IValidationBuilder {

@@ -5,6 +5,7 @@ import { isEqual } from 'lodash';
 import { IProject, IProjectPipeline } from 'core/domain';
 import { IWizardPageComponent } from 'core/modal';
 import { FormikApplicationsPicker } from 'core/projects/configure/FormikApplicationsPicker';
+import { buildValidators, ArrayItemValidator, Validation } from 'core/presentation';
 
 export interface IApplicationsProps {
   formik: FormikProps<IProject>;
@@ -14,20 +15,20 @@ export interface IApplicationsProps {
 
 export class Applications extends React.Component<IApplicationsProps> implements IWizardPageComponent<IProject> {
   public validate(project: IProject): FormikErrors<IProject> {
-    const configuredApps = (project.config && project.config.applications) || [];
-    const getApplicationError = (app: string) =>
-      this.props.allApplications.includes(app) ? undefined : `Application '${app}' does not exist.`;
+    const { oneOf } = Validation;
 
-    const applicationErrors = configuredApps.map(getApplicationError);
-    if (!applicationErrors.some(err => !!err)) {
-      return {};
-    }
+    const builder = buildValidators(project);
+    const { arrayForEach } = builder;
 
-    return {
-      config: {
-        applications: applicationErrors,
-      },
-    } as any;
+    const applicationValidator: ArrayItemValidator = applicationBuilder => {
+      applicationBuilder
+        .item('Application')
+        .validate([oneOf(this.props.allApplications, 'This application does not exist.')]);
+    };
+
+    builder.field('config.applications', 'Applications').validate([arrayForEach(applicationValidator)]);
+
+    return builder.result();
   }
 
   public componentDidMount() {

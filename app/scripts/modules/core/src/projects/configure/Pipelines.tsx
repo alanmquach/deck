@@ -1,7 +1,14 @@
 import * as React from 'react';
 import { FieldArray, FormikErrors, getIn } from 'formik';
 
-import { FormikFormField, ReactSelectInput, StringsAsOptions } from 'core/presentation';
+import {
+  FormikFormField,
+  ReactSelectInput,
+  StringsAsOptions,
+  buildValidators,
+  IArrayItemValidator,
+  Validators,
+} from 'core/presentation';
 import { Spinner } from 'core/widgets';
 import { IPipeline, IProject, IProjectPipeline } from 'core/domain';
 import { IWizardPageComponent } from 'core/modal';
@@ -14,36 +21,29 @@ export interface IPipelinesProps {
 
 export class Pipelines extends React.Component<IPipelinesProps> implements IWizardPageComponent<IProject> {
   public validate = (value: IProject): FormikErrors<IProject> => {
-    const projectApplications = (value.config && value.config.applications) || [];
-    const { appsPipelines } = this.props;
+    const { oneOf } = Validators;
+    const builder = buildValidators(value);
+    const { arrayForEach } = builder;
 
-    if (value.config && value.config.pipelineConfigs && value.config.pipelineConfigs.length) {
-      const pipelineConfigErrors = value.config.pipelineConfigs.map(config => {
-        const pipelineIdsForApp = (appsPipelines[config.application] || []).map(p => p.id);
+    const pipelineConfigValidator: IArrayItemValidator = (pipelineConfigBuilder, { application }: IProjectPipeline) => {
+      const pipelineIdsForApp = (this.props.appsPipelines[application] || []).map(p => p.id);
+      pipelineConfigBuilder
+        .field('application', 'Application')
+        .required(
+          [oneOf(value.config.applications, 'This application is not part of the project')],
+          'Application must be specified',
+        );
+      pipelineConfigBuilder
+        .field('pipelineConfigId', 'Pipeline')
+        .required(
+          [oneOf(pipelineIdsForApp, `Pipeline does not exist in ${application}`)],
+          'Pipeline must be specified',
+        );
+    };
 
-        if (!config.application) {
-          return { application: 'Application must be specified' };
-        } else if (!projectApplications.includes(config.application)) {
-          return { application: 'This application is not part of the project' };
-        } else if (!config.pipelineConfigId) {
-          return { pipelineConfigId: 'Pipeline must be specified' };
-        } else if (!pipelineIdsForApp.includes(config.pipelineConfigId)) {
-          return { pipelineConfigId: `Pipeline does not exist in ${config.application}` };
-        }
+    builder.field('config.pipelineConfigs', 'Pipeline config').optional([arrayForEach(pipelineConfigValidator)]);
 
-        return null;
-      });
-
-      if (pipelineConfigErrors.some(val => !!val)) {
-        return {
-          config: {
-            pipelineConfigs: pipelineConfigErrors as any,
-          },
-        };
-      }
-    }
-
-    return {};
+    return builder.result();
   };
 
   public render() {
