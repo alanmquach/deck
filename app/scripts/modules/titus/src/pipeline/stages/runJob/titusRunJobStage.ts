@@ -1,7 +1,7 @@
 import { ExecutionDetailsTasks, Registry } from '@spinnaker/core';
 
 import { RunJobExecutionDetails } from './RunJobExecutionDetails';
-import { TitusRunJobStageConfig } from './TitusRunJobStageConfig';
+import { TitusRunJobStageConfig, validate } from './TitusRunJobStageConfig';
 
 Registry.pipeline.registerStage({
   provides: 'runJob',
@@ -13,15 +13,16 @@ Registry.pipeline.registerStage({
   component: TitusRunJobStageConfig,
   executionDetailsSections: [RunJobExecutionDetails, ExecutionDetailsTasks],
   defaultTimeoutMs: 2 * 60 * 60 * 1000, // 2 hours
-  validators: [
-    { type: 'requiredField', fieldName: 'cluster.iamProfile' },
-    { type: 'requiredField', fieldName: 'cluster.imageId' },
-    { type: 'requiredField', fieldName: 'credentials' },
-    { type: 'requiredField', fieldName: 'cluster.region' },
-    { type: 'requiredField', fieldName: 'cluster.resources.cpu' },
-    { type: 'requiredField', fieldName: 'cluster.resources.gpu' },
-    { type: 'requiredField', fieldName: 'cluster.resources.memory' },
-    { type: 'requiredField', fieldName: 'cluster.resources.disk' },
-    { type: 'requiredField', fieldName: 'cluster.runtimeLimitSecs' },
-  ],
+  validateFn: validate,
+  // validators: [
+  //   { type: 'requiredField', fieldName: 'cluster.iamProfile' },
+  //   { type: 'requiredField', fieldName: 'cluster.imageId' },
+  //   { type: 'requiredField', fieldName: 'credentials' },
+  //   { type: 'requiredField', fieldName: 'cluster.region' },
+  //   { type: 'requiredField', fieldName: 'cluster.resources.cpu' },
+  //   { type: 'requiredField', fieldName: 'cluster.resources.gpu' },
+  //   { type: 'requiredField', fieldName: 'cluster.resources.memory' },
+  //   { type: 'requiredField', fieldName: 'cluster.resources.disk' },
+  //   { type: 'requiredField', fieldName: 'cluster.runtimeLimitSecs' },
+  // ],
 });
