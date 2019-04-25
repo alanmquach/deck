@@ -1,11 +1,10 @@
 import * as React from 'react';
-import { defaultsDeep, set } from 'lodash';
+import { cloneDeep, defaultsDeep, forOwn } from 'lodash';
 
 import {
   AccountTag,
   IStageConfigProps,
-  RegionSelectField,
-  StageConfigField,
+  RegionSelectInput,
   HelpField,
   IAggregatedAccounts,
   IRegion,
@@ -13,6 +12,15 @@ import {
   FirewallLabels,
   MapEditor,
   AccountSelectInput,
+  FormikStageConfig,
+  FormikFormField,
+  IStage,
+  IFormikStageConfigInjectedProps,
+  IContextualValidator,
+  NumberInput,
+  TextInput,
+  CheckboxInput,
+  buildValidators,
 } from '@spinnaker/core';
 
 import { DockerImageAndTagSelector, DockerImageUtils, IDockerImageAndTagChanges } from '@spinnaker/docker';
@@ -44,19 +52,13 @@ interface IClusterDefaults {
   iamProfile?: string;
 }
 
-export class TitusRunJobStageConfig extends React.Component<IStageConfigProps, ITitusRunJobStageConfigState> {
-  private credentialsKeyedByAccount: IAggregatedAccounts = {};
-  private defaultIamProfile = '';
-
-  public state: ITitusRunJobStageConfigState = {
-    credentials: [],
-    regions: [],
-    loaded: false,
-  };
+export class TitusRunJobStageConfig extends React.Component<IStageConfigProps> {
+  private stage: IStage;
 
   public constructor(props: IStageConfigProps) {
     super(props);
-    const { application, stage } = props;
+    const { application, stage: initialStageConfig } = props;
+    const stage = cloneDeep(initialStageConfig);
     stage.cluster = stage.cluster || {};
     stage.waitForCompletion = stage.waitForCompletion === undefined ? true : stage.waitForCompletion;
 
@@ -76,8 +78,10 @@ export class TitusRunJobStageConfig extends React.Component<IStageConfigProps, I
       };
     }
 
-    const defaultIamProfile = TitusProviderSettings.defaults.iamProfile || '{{application}}InstanceProfile';
-    this.defaultIamProfile = defaultIamProfile.replace('{{application}}', application.name);
+    const defaultIamProfile = (TitusProviderSettings.defaults.iamProfile || '{{application}}InstanceProfile').replace(
+      '{{application}}',
+      application.name,
+    );
 
     const clusterDefaults: IClusterDefaults = {
       application: application.name,
@@ -97,28 +101,85 @@ export class TitusRunJobStageConfig extends React.Component<IStageConfigProps, I
     };
 
     if (stage.isNew) {
-      clusterDefaults.iamProfile = this.defaultIamProfile;
+      clusterDefaults.iamProfile = defaultIamProfile;
     }
 
     defaultsDeep(stage.cluster, clusterDefaults);
 
     stage.cloudProvider = stage.cloudProvider || 'titus';
     stage.deferredInitialization = true;
+    // Intentionally initializing the stage config only once in the constructor
+    // The stage config is then completely owned within FormikStageConfig's Formik state
+    this.stage = stage;
+  }
+
+  public render() {
+    const stage = this.stage;
+    return (
+      <FormikStageConfig
+        stage={stage}
+        {...this.props}
+        onChange={this.props.updateStage}
+        validate={validate}
+        render={formik => <ConfigureTitusRunJobStage {...formik} />}
+      />
+    );
+  }
+}
+
+export const validate: IContextualValidator = stage => {
+  const validation = buildValidators(stage);
+  validation.field('cluster.iamProfile', 'IAM Instance Profile').required();
+  validation.field('cluster.imageId', 'Image ID').required();
+  validation.field('credentials', 'Account').required();
+  validation.field('cluster.region', 'Region').required();
+  validation.field('cluster.resources.cpu', 'CPU(s)').required();
+  validation.field('cluster.resources.gpu', 'GPU(s)').required();
+  validation.field('cluster.resources.memory', 'Memory').required();
+  validation.field('cluster.resources.disk', 'Disk').required();
+  validation.field('cluster.runtimeLimitSecs', 'Runtime Limit').required();
+  return validation.result();
+};
+
+class ConfigureTitusRunJobStage extends React.Component<IFormikStageConfigInjectedProps, ITitusRunJobStageConfigState> {
+  private credentialsKeyedByAccount: IAggregatedAccounts = {};
+
+  public state: ITitusRunJobStageConfigState = {
+    credentials: [],
+    regions: [],
+    loaded: false,
+  };
+
+  public componentDidMount() {
+    const {
+      formik: { values, setFieldValue },
+    } = this.props;
+    AccountService.getCredentialsKeyedByAccount('titus').then(credentialsKeyedByAccount => {
+      this.credentialsKeyedByAccount = credentialsKeyedByAccount;
+      const credentials = Object.keys(credentialsKeyedByAccount);
+      const selectedCredentials = values.credentials || credentials[0];
+      setFieldValue('credentials', selectedCredentials);
+      this.setRegistry(selectedCredentials);
+      this.updateRegions(selectedCredentials);
+      this.setState({ credentials, loaded: true });
+    });
   }
 
   private setRegistry(account: string) {
     if (account) {
-      this.props.stage.registry = this.credentialsKeyedByAccount[account].registry;
+      this.props.formik.setFieldValue('registry', this.credentialsKeyedByAccount[account].registry);
     }
   }
 
   private updateRegions(account: string) {
+    const {
+      formik: { values: stage, setFieldValue },
+    } = this.props;
     let regions: IRegion[];
     if (account) {
       regions = this.credentialsKeyedByAccount[account].regions;
-      if (regions.map(r => r.name).every(r => r !== this.props.stage.cluster.region)) {
-        delete this.props.stage.cluster.region;
-        this.props.stageFieldUpdated();
+      if (regions.map(r => r.name).every(r => r !== stage.cluster.region)) {
+        setFieldValue('cluster.region', undefined);
       }
     } else {
       regions = [];
@@ -126,88 +187,62 @@ export class TitusRunJobStageConfig extends React.Component<IStageConfigProps, I
     this.setState({ regions });
   }
 
-  private accountChanged = (account: string) => {
-    set(this.props.stage, 'account', account);
-    this.stageFieldChanged('credentials', account);
+  private accountChanged(account: string) {
+    // Duplicating 'credentials' into 'account'. This should really be shimmed in a service instead.
+    this.props.formik.setFieldValue('account', account);
     this.setRegistry(account);
     this.updateRegions(account);
-  };
+  }
 
   private dockerChanged = (changes: IDockerImageAndTagChanges) => {
     // Temporary until stage config section is no longer angular
     const { imageId, ...rest } = changes;
-    Object.assign(this.props.stage, rest);
+    forOwn(rest, (value, key) => this.props.formik.setFieldValue(key, value));
     if (imageId) {
-      this.props.stage.cluster.imageId = imageId;
+      this.props.formik.setFieldValue('cluster.imageId', imageId);
     } else {
-      delete this.props.stage.cluster.imageId;
+      this.props.formik.setFieldValue('cluster.imageId', undefined);
     }
-    this.props.stageFieldUpdated();
-    this.forceUpdate();
-  };
-
-  private stageFieldChanged = (fieldIndex: string, value: any) => {
-    set(this.props.stage, fieldIndex, value);
-    this.props.stageFieldUpdated();
-    this.forceUpdate();
-  };
-
-  public componentDidMount() {
-    const { stage } = this.props;
-    AccountService.getCredentialsKeyedByAccount('titus').then(credentialsKeyedByAccount => {
-      this.credentialsKeyedByAccount = credentialsKeyedByAccount;
-      const credentials = Object.keys(credentialsKeyedByAccount);
-      stage.credentials = stage.credentials || credentials[0];
-
-      this.setRegistry(stage.credentials);
-      this.updateRegions(stage.credentials);
-      this.setState({ credentials, loaded: true });
-    });
-  }
-
-  private mapChanged = (key: string, values: { [key: string]: string }) => {
-    this.stageFieldChanged(key, values);
-  };
-
-  private groupsChanged = (groups: string[]) => {
-    this.stageFieldChanged('cluster.securityGroups', groups);
-    this.forceUpdate();
   };
 
   public render() {
-    const { stage } = this.props;
+    const { application, formik } = this.props;
+    const { values: stage } = formik;
     const { credentials, loaded, regions } = this.state;
     const awsAccount = (this.credentialsKeyedByAccount[stage.credentials] || { awsAccount: '' }).awsAccount;
+    const defaultIamProfile = (TitusProviderSettings.defaults.iamProfile || '{{application}}InstanceProfile').replace(
+      '{{application}}',
+      application.name,
+    );
+
+    if (!loaded) {
+      return null;
+    }
 
     return (
       <div className="form-horizontal">
-        <div className="form-group">
-          <label className="col-md-3 sm-label-right">
-            <span className="label-text">Account</span>
-          </label>
-          <div className="col-md-5">
-            <AccountSelectInput
-              value={stage.credentials}
-              onChange={(evt: any) => this.accountChanged(evt.target.value)}
-              accounts={credentials}
-              provider="titus"
-            />
-            {stage.credentials !== undefined && (
-              <div className="small">
-                Uses resources from the Amazon account <AccountTag account={awsAccount} />
-              </div>
-            )}
-          </div>
-        </div>
+        <FormikFormField
+          name="credentials"
+          label="Account"
+          input={props => (
+            <>
+              <AccountSelectInput accounts={credentials} provider="titus" {...props} />
+              {stage.credentials !== undefined && (
+                <div className="small">
+                  Uses resources from the Amazon account <AccountTag account={awsAccount} />
+                </div>
+              )}
+            </>
+          )}
+          onChange={this.accountChanged}
+        />
 
-        <RegionSelectField
-          labelColumns={3}
-          fieldColumns={5}
-          component={stage.cluster}
-          field="region"
-          account={stage.credentials}
-          regions={regions}
-          onChange={region => this.stageFieldChanged('region', region)}
+        <FormikFormField
+          name="cluster.region"
+          label="Region"
+          fastField={false}
+          input={props => <RegionSelectInput account={stage.credentials} regions={regions} {...props} />}
+          onChange={region => this.props.formik.setFieldValue('region', region)}
         />
 
         <DockerImageAndTagSelector
@@ -226,200 +261,170 @@ export class TitusRunJobStageConfig extends React.Component<IStageConfigProps, I
           fieldClass="col-md-6"
         />
 
-        <StageConfigField label="CPU(s)">
-          <input
-            type="number"
-            className="form-control input-sm"
-            value={stage.cluster.resources.cpu}
-            onChange={e => this.stageFieldChanged('cluster.resources.cpu', e.target.value)}
-            required={true}
-          />
-        </StageConfigField>
+        <FormikFormField
+          name="cluster.resources.cpu"
+          label="CPU(s)"
+          input={props => <NumberInput {...props} />}
+          required={true}
+        />
 
-        <StageConfigField label="Memory (MB)">
-          <input
-            type="number"
-            className="form-control input-sm"
-            onChange={e => this.stageFieldChanged('cluster.resources.memory', e.target.value)}
-            value={stage.cluster.resources.memory}
-            required={true}
-          />
-        </StageConfigField>
+        <FormikFormField
+          name="cluster.resources.memory"
+          label="Memory (MB)"
+          input={props => <NumberInput {...props} />}
+          required={true}
+        />
 
-        <StageConfigField label="Disk (MB)">
-          <input
-            type="number"
-            className="form-control input-sm"
-            onChange={e => this.stageFieldChanged('cluster.resources.disk', e.target.value)}
-            value={stage.cluster.resources.disk}
-            required={true}
-          />
-        </StageConfigField>
+        <FormikFormField
+          name="cluster.resources.disk"
+          label="Disk (MB)"
+          input={props => <NumberInput {...props} />}
+          required={true}
+        />
 
-        <StageConfigField label="Network (Mbps)" helpKey="titus.deploy.network">
-          <input
-            type="number"
-            className="form-control input-sm"
-            onChange={e => this.stageFieldChanged('cluster.resources.networkMbps', e.target.value)}
-            value={stage.cluster.resources.networkMbps}
-            required={true}
-          />
-        </StageConfigField>
+        <FormikFormField
+          name="cluster.resources.networkMbps"
+          label="Network (Mbps)"
+          help={<HelpField id="titus.deploy.network" />}
+          input={props => <NumberInput {...props} />}
+          required={true}
+        />
 
-        <StageConfigField label="GPU(s)" helpKey="titus.deploy.gpu">
-          <input
-            type="number"
-            className="form-control input-sm"
-            onChange={e => this.stageFieldChanged('cluster.resources.gpu', e.target.value)}
-            value={stage.cluster.resources.gpu}
-            required={true}
-          />
-        </StageConfigField>
+        <FormikFormField
+          name="cluster.resources.gpu"
+          label="GPU(s)"
+          help={<HelpField id="titus.deploy.gpu" />}
+          input={props => <NumberInput {...props} />}
+          required={true}
+        />
 
-        <StageConfigField label="Entrypoint">
-          <input
-            type="text"
-            className="form-control input-sm"
-            value={stage.cluster.entryPoint}
-            onChange={e => this.stageFieldChanged('cluster.entryPoint', e.target.value)}
-          />
-        </StageConfigField>
+        <FormikFormField name="cluster.entryPoint" label="Entrypoint" input={props => <TextInput {...props} />} />
 
-        <StageConfigField label="Runtime Limit (Seconds)" helpKey="titus.deploy.runtimeLimitSecs">
-          <input
-            type="number"
-            className="form-control input-sm"
-            value={stage.cluster.runtimeLimitSecs}
-            onChange={e => this.stageFieldChanged('cluster.runtimeLimitSecs', e.target.value)}
-            min="1"
-            required={true}
-          />
-        </StageConfigField>
+        <FormikFormField
+          name="cluster.runtimeLimitSecs"
+          label="Runtime Limit (Seconds)"
+          help={<HelpField id="titus.deploy.runtimeLimitSecs" />}
+          input={props => <NumberInput {...props} min={1} />}
+          required={true}
+        />
 
-        <StageConfigField label="Retries" helpKey="titus.deploy.retries">
-          <input
-            type="number"
-            className="form-control input-sm"
-            onChange={e => this.stageFieldChanged('cluster.retries', e.target.value)}
-            value={stage.cluster.retries}
-            min="0"
-            required={true}
-          />
-        </StageConfigField>
+        <FormikFormField
+          name="cluster.retries"
+          label="Retries"
+          help={<HelpField id="titus.deploy.retries" />}
+          input={props => <NumberInput {...props} min={0} />}
+          required={true}
+        />
 
-        <StageConfigField label="Property File" helpKey="titus.deploy.propertyFile">
-          <input
-            type="text"
-            className="form-control input-sm"
-            onChange={e => this.stageFieldChanged('propertyFile', e.target.value)}
-            value={stage.propertyFile}
-          />
-        </StageConfigField>
+        <FormikFormField
+          name="propertyFile"
+          label="Property File"
+          help={<HelpField id="titus.deploy.propertyFile" />}
+          input={props => <TextInput {...props} />}
+        />
 
-        <div className="form-group">
-          <div className="col-md-9 col-md-offset-1">
-            <div className="checkbox">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={stage.showAdvancedOptions}
-                  onChange={e => this.stageFieldChanged('showAdvancedOptions', e.target.checked)}
-                />
-                <strong>Show Advanced Options</strong>
-              </label>
-            </div>
-          </div>
-        </div>
+        {/* This should only be local state, but it's also nice to have your "show advanced" preference persisted */}
+        <FormikFormField
+          name="showAdvancedOptions"
+          input={props => <CheckboxInput {...props} text="Show Advanced Options" />}
+        />
 
         <div className={`${stage.showAdvancedOptions === true ? 'collapse.in' : 'collapse'}`}>
-          <div className="form-group">
-            <label className="col-md-3 sm-label-right">
-              <span className="label-text">IAM Instance Profile</span> <HelpField id="titus.deploy.iamProfile" />
-            </label>
-            <div className="col-md-4">
-              <input
-                type="text"
-                className="form-control input-sm"
-                value={stage.cluster.iamProfile}
-                placeholder={this.defaultIamProfile}
-                required={true}
-                onChange={e => this.stageFieldChanged('cluster.iamProfile', e.target.value)}
-              />
-            </div>
-            <div className="col-md-1 small" style={{ whiteSpace: 'nowrap', paddingLeft: '0px', paddingTop: '7px' }}>
-              in <AccountTag account={awsAccount} />
-            </div>
-            {!stage.isNew && !stage.cluster.iamProfile && (
-              <div className="checkbox">
-                <label>
-                  <input
-                    type="checkbox"
-                    onChange={() => this.stageFieldChanged('cluster.iamProfile', this.defaultIamProfile)}
+          <FormikFormField
+            name="cluster.iamProfile"
+            label="IAM Instance Profile"
+            help={<HelpField id="titus.deploy.iamProfile" />}
+            input={props => (
+              <>
+                <TextInput {...props} />
+                in <AccountTag account={awsAccount} />
+                {!stage.isNew && !stage.cluster.iamProfile && (
+                  <>
+                    <input
+                      type="checkbox"
+                      onChange={() => this.props.formik.setFieldValue('cluster.iamProfile', defaultIamProfile)}
+                    />
+                    Use default
+                  </>
+                )}
+              </>
+            )}
+          />
+
+          <FormikFormField
+            name="cluster.capacityGroup"
+            label="Capacity Group"
+            help={<HelpField id="titus.job.capacityGroup" />}
+            input={props => <TextInput {...props} />}
+          />
+
+          <FormikFormField
+            name="cluster.securityGroups"
+            label={FirewallLabels.get('Firewalls')}
+            help={<HelpField id="titus.job.securityGroups" />}
+            input={({ name, value }) => (
+              <>
+                {(!stage.credentials || !stage.cluster.region) && (
+                  <div>Account and region must be selected before {FirewallLabels.get('firewalls')} can be added</div>
+                )}
+                {loaded && stage.credentials && stage.cluster.region && (
+                  <TitusSecurityGroupPicker
+                    account={stage.credentials}
+                    region={stage.cluster.region}
+                    command={stage}
+                    amazonAccount={awsAccount}
+                    hideLabel={true}
+                    groupsToEdit={value}
+                    onChange={groups => this.props.formik.setFieldValue(name, groups)}
                   />
-                  Use default
-                </label>
-              </div>
+                )}
+              </>
             )}
-          </div>
+          />
 
-          <StageConfigField label="Capacity Group" fieldColumns={4} helpKey="titus.job.capacityGroup">
-            <input
-              type="text"
-              className="form-control input-sm"
-              value={stage.cluster.capacityGroup || ''}
-              onChange={e => this.stageFieldChanged('cluster.capacityGroup', e.target.value)}
-            />
-          </StageConfigField>
-
-          <StageConfigField label={FirewallLabels.get('Firewalls')} helpKey="titus.job.securityGroups">
-            {(!stage.credentials || !stage.cluster.region) && (
-              <div>Account and region must be selected before {FirewallLabels.get('firewalls')} can be added</div>
-            )}
-            {loaded && stage.credentials && stage.cluster.region && (
-              <TitusSecurityGroupPicker
-                account={stage.credentials}
-                region={stage.cluster.region}
-                command={stage}
-                amazonAccount={awsAccount}
-                hideLabel={true}
-                groupsToEdit={stage.cluster.securityGroups}
-                onChange={this.groupsChanged}
+          <FormikFormField
+            name="cluster.labels"
+            label="Job Attributes (optional)"
+            input={({ name, value }) => (
+              <MapEditor
+                model={value}
+                allowEmpty={true}
+                onChange={(v: any) => this.props.formik.setFieldValue(name, v)}
               />
             )}
-          </StageConfigField>
+          />
 
-          <StageConfigField label="Job Attributes (optional)">
-            <MapEditor
-              model={stage.cluster.labels}
-              allowEmpty={true}
-              onChange={(v: any) => this.mapChanged('cluster.labels', v)}
-            />
-          </StageConfigField>
-          <StageConfigField label="Container Attributes (optional)">
-            <MapEditor
-              model={stage.cluster.containerAttributes}
-              allowEmpty={true}
-              onChange={(v: any) => this.mapChanged('cluster.containerAttributes', v)}
-            />
-          </StageConfigField>
-          <StageConfigField label="Environment Variables (optional)">
-            <MapEditor
-              model={stage.cluster.env}
-              allowEmpty={true}
-              onChange={(v: any) => this.mapChanged('cluster.env', v)}
-            />
-          </StageConfigField>
+          <FormikFormField
+            name="cluster.containerAttributes"
+            label="Container Attributes (optional)"
+            input={({ name, value }) => (
+              <MapEditor
+                model={value}
+                allowEmpty={true}
+                onChange={(v: any) => this.props.formik.setFieldValue(name, v)}
+              />
+            )}
+          />
+
+          <FormikFormField
+            name="cluster.env"
+            label="Environment Variables (optional)"
+            input={({ name, value }) => (
+              <MapEditor
+                model={value}
+                allowEmpty={true}
+                onChange={(v: any) => this.props.formik.setFieldValue(name, v)}
+              />
+            )}
+          />
         </div>
 
-        <StageConfigField label="Wait for results" helpKey="titus.job.waitForCompletion">
-          <input
-            type="checkbox"
-            className="input-sm"
-            name="waitForCompletion"
-            checked={stage.waitForCompletion}
-            onChange={e => this.stageFieldChanged('waitForCompletion', e.target.checked)}
-          />
-        </StageConfigField>
+        <FormikFormField
+          name="waitForCompletion"
+          label="Wait for results"
+          help={<HelpField id="titus.job.waitForCompletion" />}
+          input={props => <CheckboxInput {...props} />}
+        />
       </div>
     );
   }
