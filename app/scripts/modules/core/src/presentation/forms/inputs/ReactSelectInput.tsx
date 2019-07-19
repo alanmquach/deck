@@ -27,8 +27,11 @@ export const reactSelectValidationErrorStyle = {
  * somewhat compatible with the controlled input pattern
  */
 export const reactSelectOnChangeAdapter = (name: string, onChange: IReactSelectInputProps['onChange']) => {
-  return (selectedOption: Option) => {
-    const target = { name, value: selectedOption.value };
+  return (selectedOption: Option | Option[]) => {
+    const value = Array.isArray(selectedOption)
+      ? selectedOption.map((option: Option) => option.value)
+      : (selectedOption as Option).value;
+    const target = { name, value };
     const event = createFakeReactSyntheticEvent(target);
     return (onChange || noop)(event);
   };
