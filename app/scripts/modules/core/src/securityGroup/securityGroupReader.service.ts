@@ -351,7 +351,7 @@ export class SecurityGroupReader {
     return data;
   }
 
-  public getApplicationSecurityGroup(
+  public static getApplicationSecurityGroup(
     application: Application,
     account: string,
     region: string,
@@ -363,6 +363,15 @@ export class SecurityGroupReader {
     }
 
     return result;
+  }
+
+  public getApplicationSecurityGroup(
+    application: Application,
+    account: string,
+    region: string,
+    id: string,
+  ): IApplicationSecurityGroup {
+    return SecurityGroupReader.getApplicationSecurityGroup(application, account, region, id);
   }
 
   public getApplicationSecurityGroups(
