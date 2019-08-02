@@ -8,7 +8,7 @@ import { $q } from 'ngimport';
 import { Subscription } from 'rxjs';
 
 import { Application } from 'core/application';
-import { IPipeline, IPipelineCommand } from 'core/domain';
+import { IPipeline, IPipelineCommand, IExecution, IExecutionTrigger } from 'core/domain';
 import { ReactInjector } from 'core/reactShims';
 import { ManualExecutionModal } from 'core/pipeline';
 import { Tooltip } from 'core/presentation/Tooltip';
@@ -157,11 +157,11 @@ export class Executions extends React.Component<IExecutionsProps, IExecutionsSta
     this.triggerPipeline();
   };
 
-  private triggerPipeline(pipeline: IPipeline = null): void {
-    ReactGA.event({ category: 'Pipelines', action: 'Trigger Pipeline (top level)' });
+  private showManualExecutionModal(pipeline: IPipeline = null, trigger: IExecutionTrigger = null): void {
     ManualExecutionModal.show({
       pipeline: pipeline,
       application: this.props.app,
+      trigger: trigger,
     })
       .then(command => {
         this.startPipeline(command);
@@ -170,8 +170,22 @@ export class Executions extends React.Component<IExecutionsProps, IExecutionsSta
       .catch(() => this.clearManualExecutionParam());
   }
 
+  private rerunExecution(trigger: IExecutionTrigger = null, pipeline: IPipeline): void {
+    ReactGA.event({ category: 'Pipelines', action: 'Rerun Pipeline Execution (top level)' });
+    this.showManualExecutionModal(pipeline, trigger);
+  }
+
+  private triggerPipeline(pipeline: IPipeline = null): void {
+    ReactGA.event({ category: 'Pipelines', action: 'Trigger Pipeline (top level)' });
+    this.showManualExecutionModal(pipeline, null);
+  }
+
   private clearManualExecutionParam(): void {
-    ReactInjector.$state.go('.', { startManualExecution: null }, { inherit: true, location: 'replace' });
+    ReactInjector.$state.go(
+      '.',
+      { startManualExecution: null, rerunExecution: null },
+      { inherit: true, location: 'replace' },
+    );
   }
 
   public componentDidMount(): void {
@@ -213,6 +227,20 @@ export class Executions extends React.Component<IExecutionsProps, IExecutionsSta
     $q.all([app.executions.ready(), app.pipelineConfigs.ready()]).then(() => {
       this.updateExecutionGroups();
       const nameOrIdToStart = ReactInjector.$stateParams.startManualExecution;
+      const executionToRerun = ReactInjector.$stateParams.rerunExecution;
+      if (executionToRerun) {
+        const { executionService } = ReactInjector;
+        executionService.getExecution(executionToRerun).then((execution: IExecution) => {
+          const trigger = execution.trigger;
+          const pipeline = app.pipelineConfigs.data.find((p: IPipeline) => p.id === execution.pipelineConfigId);
+          if (pipeline) {
+            this.rerunExecution(trigger, pipeline);
+          } else {
+            this.clearManualExecutionParam();
+          }
+        });
+      }
+
       if (nameOrIdToStart) {
         const toStart = app.pipelineConfigs.data.find((p: IPipeline) => [p.id, p.name].includes(nameOrIdToStart));
         if (toStart) {
