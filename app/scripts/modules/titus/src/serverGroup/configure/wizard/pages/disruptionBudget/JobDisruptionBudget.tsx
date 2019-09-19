@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { FormikProps } from 'formik';
-import { Option } from 'react-select';
 import { isEqual, get } from 'lodash';
 
 import {
@@ -8,9 +7,10 @@ import {
   FormikFormField,
   CheckboxInput,
   HelpField,
-  TetheredSelect,
+  ReactSelect as TetheredSelect,
   LayoutProvider,
   ResponsiveFieldLayout,
+  IOption,
 } from '@spinnaker/core';
 
 import { WindowPicker } from './WindowPicker';
@@ -36,7 +36,7 @@ export interface IJobDisruptionBudgetState {
   usingDefault: boolean;
 }
 
-export interface IFieldOption extends Option {
+export interface IFieldOption extends IOption {
   field: keyof IJobDisruptionBudget;
   description?: string;
   defaultValues: any;

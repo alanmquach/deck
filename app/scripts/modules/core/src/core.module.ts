@@ -8,7 +8,7 @@ import 'bootstrap/dist/js/bootstrap';
 import '@fortawesome/fontawesome-free/css/solid.css';
 import '@fortawesome/fontawesome-free/css/regular.css';
 import '@fortawesome/fontawesome-free/css/fontawesome.css';
-import 'react-select/dist/react-select.css';
+// import 'react-select/dist/react-select.css';
 import 'react-virtualized/styles.css';
 import 'react-virtualized-select/styles.css';
 import 'ui-select/dist/select.css';

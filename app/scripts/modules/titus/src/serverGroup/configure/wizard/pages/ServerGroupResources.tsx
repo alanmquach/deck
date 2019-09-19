@@ -1,7 +1,6 @@
 import * as React from 'react';
-import Select, { Option } from 'react-select';
 
-import { HelpField, IWizardPageComponent } from '@spinnaker/core';
+import { HelpField, IWizardPageComponent, ReactSelect } from '@spinnaker/core';
 
 import { ITitusServerGroupCommand } from '../../../configure/serverGroupConfiguration.service';
 import { FormikProps } from 'formik';
@@ -150,11 +149,11 @@ export class ServerGroupResources extends React.Component<IServerGroupResourcesP
             <HelpField id="titus.deploy.mountPermissions" />
           </div>
           <div className="col-md-8">
-            <Select
-              value={values.efs.mountPerm}
+            <ReactSelect
+              value={mountPermOptions.find(o => o.value === values.efs.mountPerm)}
               clearable={false}
               options={mountPermOptions}
-              onChange={(option: Option) => setFieldValue('efs', { ...values.efs, ...{ mountPerm: option.value } })}
+              onChange={option => setFieldValue('efs', { ...values.efs, ...{ mountPerm: option.value } })}
             />
           </div>
         </div>

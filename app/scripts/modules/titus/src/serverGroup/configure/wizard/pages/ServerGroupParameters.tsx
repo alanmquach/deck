@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { Field, FormikProps } from 'formik';
-import Select, { Option } from 'react-select';
 
 import {
   HelpField,
@@ -11,6 +10,7 @@ import {
   Application,
   ChecklistInput,
   robotToHuman,
+  ReactSelect,
 } from '@spinnaker/core';
 
 import { ITitusServerGroupCommand } from '../../../configure/serverGroupConfiguration.service';
@@ -109,10 +109,10 @@ export class ServerGroupParameters extends React.Component<IServerGroupParameter
             <HelpField id="titus.deploy.migrationPolicy" />
           </div>
           <div className="col-md-4">
-            <Select
-              value={values.migrationPolicy.type}
+            <ReactSelect
+              value={migrationPolicyOptions.find(o => o.value === values.migrationPolicy.type)}
               options={migrationPolicyOptions}
-              onChange={(option: Option<string>) =>
+              onChange={option =>
                 setFieldValue('migrationPolicy', { ...values.migrationPolicy, ...{ type: option.value } })
               }
               clearable={false}
