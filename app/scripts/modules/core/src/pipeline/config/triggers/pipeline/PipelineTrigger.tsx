@@ -52,6 +52,7 @@ export function PipelineTrigger(pipelineTriggerProps: IPipelineTriggerConfigProp
         input={props => (
           <ReactSelectInput
             {...props}
+            createable={{}}
             disabled={!appsLoaded}
             isLoading={appsLoading}
             mode="VIRTUALIZED"

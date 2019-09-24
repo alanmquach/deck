@@ -1,5 +1,5 @@
 import * as React from 'react';
-import Select, { Option, OptionValues, ReactSelectProps } from 'react-select';
+import Select, { Creatable, Option, OptionValues, ReactSelectProps, ReactCreatableSelectProps } from 'react-select';
 import VirtualizedSelect from 'react-virtualized-select';
 import { isNil } from 'lodash';
 
@@ -14,6 +14,7 @@ export interface IReactSelectInputProps<T = OptionValues>
   extends IFormInputProps,
     OmitControlledInputPropsFrom<ReactSelectProps<T>> {
   stringOptions?: string[];
+  creatable?: ReactCreatableSelectProps;
   mode?: 'TETHERED' | 'VIRTUALIZED' | 'PLAIN';
 }
 
@@ -64,6 +65,7 @@ export class ReactSelectInput extends React.Component<IReactSelectInputProps> {
 
   public render() {
     const {
+      creatable,
       name,
       onChange,
       onBlur,
@@ -90,13 +92,16 @@ export class ReactSelectInput extends React.Component<IReactSelectInputProps> {
 
     const commonProps = { className, style, ignoreAccents, ...fieldProps, ...otherProps };
 
+    const SelectComponent = creatable ? Select : Creatable;
+    const virtualizedProps = { selectComponent: SelectComponent, ...creatable };
+
     const SelectElement = ({ options }: { options: IReactSelectInputProps['options'] }) =>
       mode === 'TETHERED' ? (
         <TetheredSelect {...commonProps} options={options} />
       ) : mode === 'VIRTUALIZED' ? (
-        <VirtualizedSelect {...commonProps} options={options} optionRenderer={null} />
+        <VirtualizedSelect {...virtualizedProps} {...commonProps} options={options} optionRenderer={null} />
       ) : (
-        <Select {...commonProps} options={options} />
+        <SelectComponent {...commonProps} options={options} />
       );
 
     if (isStringArray(stringOptions)) {
