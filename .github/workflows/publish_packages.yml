@@ -17,9 +17,9 @@ jobs:
         uses: actions/setup-node@v1
         with:
           node-version: 10.15.1
-      - name: yarn install, publish
+      - name: yarn install, run publish
         run: |
           yarn install
-          yarn publish
+          yarn run publish
         env:
           CI: true
