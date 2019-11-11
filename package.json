@@ -16,6 +16,7 @@
     "yarn": ">=1.10.0"
   },
   "scripts": {
+    "publish": "npm run clean",
     "clean": "rimraf .awcache .cache-loader build node_modules transpiled",
     "build": "NODE_OPTIONS=--max_old_space_size=8192 webpack --bail --progress --mode=production",
     "eslint": "eslint -c .eslintrc app/scripts/modules",
