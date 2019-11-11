@@ -182,27 +182,25 @@ export class CreatePipelineModal extends React.Component<ICreatePipelineModalPro
 
   private onSaveSuccess(config: Partial<IPipeline>): void {
     const application = this.props.application;
-    application
-      .getDataSource('pipelineConfigs')
-      .refresh(true)
-      .then(() => {
-        const newPipeline = (config.strategy
-          ? (application.strategyConfigs.data as IPipeline[])
-          : application.getDataSource('pipelineConfigs').data
-        ).find(_config => _config.name === config.name);
-        if (!newPipeline) {
-          $log.warn('Could not find new pipeline after save succeeded.');
-          this.setState({
-            saveError: true,
-            saveErrorMessage: 'Sorry, there was an error retrieving your new pipeline. Please refresh the browser.',
-            submitting: false,
-          });
-        } else {
-          newPipeline.isNew = true;
-          this.setState(this.getDefaultState());
-          this.props.pipelineSavedCallback(newPipeline.id);
-        }
-      });
+    application.pipelineConfigs.refresh(true).then(() => {
+      const configs: IPipeline[] = config.strategy
+        ? application.strategyConfigs.data
+        : application.pipelineConfigs.data;
+      const newPipeline = configs.find(_config => _config.name === config.name);
+
+      if (!newPipeline) {
+        $log.warn('Could not find new pipeline after save succeeded.');
+        this.setState({
+          saveError: true,
+          saveErrorMessage: 'Sorry, there was an error retrieving your new pipeline. Please refresh the browser.',
+          submitting: false,
+        });
+      } else {
+        newPipeline.isNew = true;
+        this.setState(this.getDefaultState());
+        this.props.pipelineSavedCallback(newPipeline.id);
+      }
+    });
   }
 
   private onSaveFailure = (response: IHttpPromiseCallbackArg<{ message: string }>): void => {
@@ -328,6 +326,9 @@ export class CreatePipelineModal extends React.Component<ICreatePipelineModalPro
     }
   }
 
+  // Prevents the form from reloading the page if the user hits enter on an input.
+  private handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => e.preventDefault();
+
   public render() {
     const { preselectedTemplate } = this.props;
     const hasSelectedATemplate = this.state.useTemplate || preselectedTemplate;
@@ -379,7 +380,7 @@ export class CreatePipelineModal extends React.Component<ICreatePipelineModalPro
               </div>
             )}
             {!(this.state.saveError || this.state.loadError) && (
-              <form role="form" name="form" className="clearfix">
+              <form role="form" name="form" className="clearfix" onSubmit={this.handleFormSubmit}>
                 {!preselectedTemplate && (
                   <div className="form-group clearfix">
                     <div className="col-md-3 sm-label-right">

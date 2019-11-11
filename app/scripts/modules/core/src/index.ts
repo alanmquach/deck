@@ -41,7 +41,7 @@ export * from './image';
 export * from './instance';
 
 export * from './loadBalancer';
-
+export * from './function';
 export * from './modal';
 
 export * from './managed';
@@ -52,6 +52,8 @@ export * from './naming';
 
 export * from './navigation';
 export * from './network';
+
+export * from './notification';
 
 export * from './orchestratedItem';
 export * from './overrideRegistry';
@@ -82,8 +84,6 @@ export * from './subnet';
 export * from './task';
 
 export * from './utils';
-
-export * from './validation';
 
 export * from './widgets';
 

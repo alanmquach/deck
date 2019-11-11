@@ -16,6 +16,7 @@ import {
 } from '@spinnaker/core';
 
 import { DockerImageAndTagSelector, DockerImageUtils, IDockerImageAndTagChanges } from '@spinnaker/docker';
+import { ITitusResources } from 'titus/domain';
 
 import { TitusSecurityGroupPicker } from './TitusSecurityGroupPicker';
 import { TitusProviderSettings } from '../../../titus.settings';
@@ -31,13 +32,7 @@ interface IClusterDefaults {
   containerAttributes: object;
   env: object;
   labels: object;
-  resources: {
-    cpu: number;
-    disk: number;
-    gpu: number;
-    memory: number;
-    networkMbps: number;
-  };
+  resources: ITitusResources;
   retries: number;
   runtimeLimitSecs: number;
   securityGroups: string[];
@@ -222,8 +217,6 @@ export class TitusRunJobStageConfig extends React.Component<IStageConfigProps, I
           showRegistry={false}
           onChange={this.dockerChanged}
           deferInitialization={stage.deferredInitialization}
-          labelClass="col-md-2 col-md-offset-1 sm-label-right"
-          fieldClass="col-md-6"
         />
 
         <StageConfigField label="CPU(s)">

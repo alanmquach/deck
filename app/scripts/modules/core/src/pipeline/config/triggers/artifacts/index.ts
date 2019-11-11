@@ -2,9 +2,11 @@ import { IArtifactKindConfig } from 'core/domain';
 
 import { Base64Match, Base64Default } from './base64/Base64ArtifactEditor';
 import { BitbucketMatch, BitbucketDefault } from './bitbucket/BitbucketArtifactEditor';
+import { CustomMatch, CustomDefault } from './custom/CustomArtifactEditor';
 import { DockerMatch, DockerDefault } from './docker/DockerArtifactEditor';
 import { GcsMatch, GcsDefault } from './gcs/GcsArtifactEditor';
 import { GithubMatch, GithubDefault } from './github/GithubArtifactEditor';
+import { GitRepoMatch, GitRepoDefault } from './gitrepo/GitRepoArtifactEditor';
 import { GitlabMatch, GitlabDefault } from './gitlab/GitlabArtifactEditor';
 import { HelmMatch, HelmDefault } from './helm/HelmArtifactEditor';
 import { HttpMatch, HttpDefault } from './http/HttpArtifactEditor';
@@ -19,12 +21,16 @@ export const artifactKindConfigs: IArtifactKindConfig[] = [
   Base64Default,
   BitbucketMatch,
   BitbucketDefault,
+  CustomMatch,
+  CustomDefault,
   DockerMatch,
   DockerDefault,
   GcsMatch,
   GcsDefault,
   GithubMatch,
   GithubDefault,
+  GitRepoMatch,
+  GitRepoDefault,
   GitlabMatch,
   GitlabDefault,
   HelmMatch,
@@ -43,4 +49,5 @@ export const artifactKindConfigs: IArtifactKindConfig[] = [
   KubernetesDefault,
 ];
 
-export * from './TriggerArtifactConstraintSelector';
+export * from './TriggerArtifactConstraintSelectorInput';
+export * from './ExpectedArtifact';

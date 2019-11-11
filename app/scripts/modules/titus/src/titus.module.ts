@@ -1,10 +1,11 @@
 import { module } from 'angular';
 
 import { CloudProviderRegistry, DeploymentStrategyRegistry } from '@spinnaker/core';
-
 import { AmazonLoadBalancersTag } from '@spinnaker/amazon';
 
 import { TITUS_MIGRATION_CONFIG_COMPONENT } from './migration/titusMigrationConfig.component';
+import { TITUS_SERVERGROUP_DETAILS_CAPACITYDETAILSSECTION } from './serverGroup/details/capacityDetailsSection.component';
+import { TITUS_SERVERGROUP_DETAILS_LAUNCHCONFIGSECTION } from './serverGroup/details/launchConfigSection.component';
 import './validation/ApplicationNameValidator';
 import './help/titus.help';
 import { TITUS_REACT_MODULE } from './reactShims/titus.react.module';
@@ -39,6 +40,8 @@ module(TITUS_MODULE, [
   require('./pipeline/stages/disableCluster/titusDisableClusterStage').name,
   require('./pipeline/stages/shrinkCluster/titusShrinkClusterStage').name,
   require('./pipeline/stages/scaleDownCluster/titusScaleDownClusterStage').name,
+  TITUS_SERVERGROUP_DETAILS_CAPACITYDETAILSSECTION,
+  TITUS_SERVERGROUP_DETAILS_LAUNCHCONFIGSECTION,
   TITUS_MIGRATION_CONFIG_COMPONENT,
 ]).config(() => {
   CloudProviderRegistry.registerProvider('titus', {
@@ -61,6 +64,12 @@ module(TITUS_MODULE, [
     },
     loadBalancer: {
       LoadBalancersTag: AmazonLoadBalancersTag,
+      incompatibleLoadBalancerTypes: [
+        {
+          type: 'classic',
+          reason: 'Classic Load Balancers cannot be used with Titus as they do not have IP based target groups.',
+        },
+      ],
       useProvider: 'aws',
     },
     instance: {

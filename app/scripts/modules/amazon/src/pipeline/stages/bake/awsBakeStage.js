@@ -23,7 +23,7 @@ module.exports = angular
       extraLabelLines: stage => {
         return stage.masterStage.context.allPreviouslyBaked || stage.masterStage.context.somePreviouslyBaked ? 1 : 0;
       },
-      defaultTimeoutMs: 60 * 60 * 1000, // 60 minutes
+      supportsCustomTimeout: true,
       validators: [
         { type: 'requiredField', fieldName: 'package' },
         { type: 'requiredField', fieldName: 'regions' },
@@ -55,8 +55,11 @@ module.exports = angular
 
       $scope.viewState = {
         loading: true,
-        roscoMode: SETTINGS.feature.roscoMode,
+        roscoMode:
+          SETTINGS.feature.roscoMode ||
+          (typeof SETTINGS.feature.roscoSelector === 'function' && SETTINGS.feature.roscoSelector($scope.stage)),
         minRootVolumeSize: AWSProviderSettings.minRootVolumeSize,
+        showVmTypeSelector: true,
       };
 
       function initialize() {
@@ -64,14 +67,9 @@ module.exports = angular
           regions: BakeryReader.getRegions('aws'),
           baseOsOptions: BakeryReader.getBaseOsOptions('aws'),
           baseLabelOptions: BakeryReader.getBaseLabelOptions(),
-          vmTypes: ['hvm', 'pv'],
           storeTypes: ['ebs', 'docker'],
         }).then(function(results) {
-          $scope.regions = results.regions;
-          $scope.vmTypes = results.vmTypes;
-          if (!$scope.stage.vmType && $scope.vmTypes && $scope.vmTypes.length) {
-            $scope.stage.vmType = $scope.vmTypes[0];
-          }
+          $scope.regions = [...results.regions].sort();
           $scope.storeTypes = results.storeTypes;
           if (!$scope.stage.storeType && $scope.storeTypes && $scope.storeTypes.length) {
             $scope.stage.storeType = $scope.storeTypes[0];
@@ -82,23 +80,41 @@ module.exports = angular
             delete $scope.stage.region;
           }
           if (!$scope.stage.regions.length && $scope.application.defaultRegions.aws) {
-            $scope.stage.regions.push($scope.application.defaultRegions.aws);
-          }
-          if (!$scope.stage.regions.length && $scope.application.defaultRegions.aws) {
-            $scope.stage.regions.push($scope.application.defaultRegions.aws);
+            $scope.stage.regions.push(...Object.keys($scope.application.defaultRegions.aws).sort());
           }
           $scope.baseOsOptions = results.baseOsOptions.baseImages;
           $scope.baseLabelOptions = results.baseLabelOptions;
 
           if (!$scope.stage.baseOs && $scope.baseOsOptions && $scope.baseOsOptions.length) {
             $scope.stage.baseOs = $scope.baseOsOptions[0].id;
+          } else if (
+            $scope.stage.baseOs &&
+            !($scope.baseOsOptions || []).find(baseOs => baseOs.id === $scope.stage.baseOs)
+          ) {
+            $scope.baseOsOptions.push({
+              id: $scope.stage.baseOs,
+              detailedDescription: 'Custom',
+              vmTypes: ['hvm', 'pv'],
+            });
           }
           if (!$scope.stage.baseLabel && $scope.baseLabelOptions && $scope.baseLabelOptions.length) {
             $scope.stage.baseLabel = $scope.baseLabelOptions[0];
           }
+          setVmTypes();
+          if (!$scope.stage.vmType && $scope.vmTypes && $scope.vmTypes.length) {
+            $scope.stage.vmType = $scope.vmTypes[0];
+          }
           $scope.showAdvancedOptions = showAdvanced();
           $scope.viewState.loading = false;
         });
+      }
+
+      function stageUpdated() {
+        deleteEmptyProperties();
+        // Since the selector computes using stage as an input, it needs to be able to recompute roscoMode on updates
+        if (typeof SETTINGS.feature.roscoSelector === 'function') {
+          $scope.viewState.roscoMode = SETTINGS.feature.roscoSelector($scope.stage);
+        }
       }
 
       function deleteEmptyProperties() {
@@ -121,6 +137,21 @@ module.exports = angular
           stg.amiSuffix ||
           stg.rootVolumeSize
         );
+      }
+
+      function setVmTypes() {
+        if ($scope.baseOsOptions.length && $scope.baseOsOptions.every(({ vmTypes }) => vmTypes)) {
+          const allVmTypes =
+            $scope.baseOsOptions.length &&
+            new Set($scope.baseOsOptions.reduce((types, { vmTypes }) => types.concat(vmTypes), []));
+          const baseOs = $scope.baseOsOptions.find(({ id }) => id === $scope.stage.baseOs);
+
+          $scope.viewState.showVmTypeSelector = allVmTypes.size > 1;
+          $scope.vmTypes = baseOs.vmTypes;
+        } else {
+          $scope.viewState.showVmTypeSelector = true;
+          $scope.vmTypes = ['hvm', 'pv'];
+        }
       }
 
       this.addExtendedAttribute = function() {
@@ -165,7 +196,14 @@ module.exports = angular
         return $scope.viewState.roscoMode || $scope.stage.varFileName;
       };
 
-      $scope.$watch('stage', deleteEmptyProperties, true);
+      this.handleBaseOsChange = function() {
+        setVmTypes();
+        if ($scope.vmTypes && $scope.vmTypes.length && !$scope.vmTypes.includes($scope.stage.vmType)) {
+          $scope.stage.vmType = $scope.vmTypes[0];
+        }
+      };
+
+      $scope.$watch('stage', stageUpdated, true);
 
       initialize();
     },

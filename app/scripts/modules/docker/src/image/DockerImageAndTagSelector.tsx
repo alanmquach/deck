@@ -2,7 +2,7 @@ import * as React from 'react';
 import Select, { Option } from 'react-select';
 import { groupBy, reduce, trim, uniq } from 'lodash';
 
-import { AccountService, HelpField, IAccount, IFindImageParams, Tooltip } from '@spinnaker/core';
+import { AccountService, HelpField, IAccount, IFindImageParams, Tooltip, ValidationMessage } from '@spinnaker/core';
 
 import { DockerImageReader, IDockerImage } from './DockerImageReader';
 import { DockerImageUtils, IDockerImageParts } from './DockerImageUtils';
@@ -29,11 +29,10 @@ export interface IDockerImageAndTagSelectorProps {
   digest: string;
   account: string;
   showRegistry?: boolean;
-  labelClass?: string;
-  fieldClass?: string;
   onChange: (changes: IDockerImageAndTagChanges) => void;
   deferInitialization?: boolean;
   showDigest?: boolean;
+  allowManualDefinition?: boolean;
 }
 
 export interface IDockerImageAndTagSelectorState {
@@ -57,12 +56,11 @@ export class DockerImageAndTagSelector extends React.Component<
   IDockerImageAndTagSelectorState
 > {
   public static defaultProps: Partial<IDockerImageAndTagSelectorProps> = {
-    fieldClass: 'col-md-8',
-    labelClass: 'col-md-3',
     organization: '',
     registry: '',
     repository: '',
     showDigest: true,
+    allowManualDefinition: true,
   };
 
   private images: IDockerImage[];
@@ -86,7 +84,7 @@ export class DockerImageAndTagSelector extends React.Component<
       props.repository && props.repository.length ? [{ label: props.repository, value: props.repository }] : [];
     const tagOptions = props.tag && props.tag.length ? [{ label: props.tag, value: props.tag }] : [];
     const parsedImageId = DockerImageUtils.splitImageId(props.imageId);
-    const defineManually = Boolean(props.imageId && props.imageId.includes('${'));
+    const defineManually = props.allowManualDefinition && Boolean(props.imageId && props.imageId.includes('${'));
 
     this.state = {
       accountOptions,
@@ -413,10 +411,9 @@ export class DockerImageAndTagSelector extends React.Component<
   public render() {
     const {
       account,
+      allowManualDefinition,
       digest,
-      fieldClass,
       imageId,
-      labelClass,
       organization,
       repository,
       showDigest,
@@ -453,7 +450,7 @@ export class DockerImageAndTagSelector extends React.Component<
             <span className="field">
               <Select
                 value={defineManually}
-                disabled={imagesLoading}
+                disabled={imagesLoading || !allowManualDefinition}
                 onChange={(o: Option<boolean>) => this.showManualInput(o.value)}
                 options={defineOptions}
                 clearable={false}
@@ -468,17 +465,19 @@ export class DockerImageAndTagSelector extends React.Component<
       <div className="sp-formItem">
         <div className="sp-formItem__left" />
         <div className="sp-formItem__right">
-          <div className="messageContainer warningMessage">
-            <i className="fa icon-alert-triangle" />
-            <div className="message">
-              {switchedManualWarning}
-              {(missingFields || []).map(f => (
-                <div>
-                  <HelpField expand={true} key={f} id={`pipeline.config.docker.trigger.missing.${f}`} />
-                </div>
-              ))}
-            </div>
-          </div>
+          <ValidationMessage
+            type="warning"
+            message={
+              <>
+                {switchedManualWarning}
+                {(missingFields || []).map(f => (
+                  <div key={f}>
+                    <HelpField expand={true} id={`pipeline.config.docker.trigger.missing.${f}`} />
+                  </div>
+                ))}
+              </>
+            }
+          />
         </div>
       </div>
     ) : null;
@@ -670,18 +669,24 @@ export class DockerImageAndTagSelector extends React.Component<
 
     const Digest =
       lookupType === 'digest' ? (
-        <div className="form-group">
-          <div className={`sm-label-right ${labelClass}`}>
-            Digest <HelpField id="pipeline.config.docker.trigger.digest" />
+        <div className="sp-formItem">
+          <div className="sp-formItem__left">
+            <div className="sp-formLabel">
+              Digest <HelpField id="pipeline.config.docker.trigger.digest" />
+            </div>
           </div>
-          <div className={fieldClass}>
-            <input
-              className="form-control input-sm"
-              placeholder="sha256:abc123"
-              value={digest || parsedImageId.digest || ''}
-              onChange={e => this.valueChanged('digest', e.target.value)}
-              required={true}
-            />
+          <div className="sp-formItem__right">
+            <div className="sp-form">
+              <span className="field">
+                <input
+                  className="form-control input-sm"
+                  placeholder="sha256:abc123"
+                  value={digest || parsedImageId.digest || ''}
+                  onChange={e => this.valueChanged('digest', e.target.value)}
+                  required={true}
+                />
+              </span>
+            </div>
           </div>
         </div>
       ) : null;

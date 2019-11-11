@@ -22,6 +22,7 @@ import { SelectorMode } from 'kubernetes/v2/manifest/selector/IManifestSelector'
 import { PatchManifestOptionsForm } from './PatchManifestOptionsForm';
 
 interface IPatchManifestStageConfigFormProps {
+  stageFieldUpdated: () => void;
   updatePipeline: (pipeline: IPipeline) => void;
 }
 
@@ -45,10 +46,10 @@ export class PatchManifestStageForm extends React.Component<
 
   public constructor(props: IPatchManifestStageConfigFormProps & IFormikStageConfigInjectedProps) {
     super(props);
-    const patchBody: string = get(props.formik.values, 'patchBody');
+    const patchBody: any[] = get(props.formik.values, 'patchBody');
     const isTextManifest: boolean = get(props.formik.values, 'source') === this.textSource;
     this.state = {
-      rawManifest: !isEmpty(patchBody) && isTextManifest ? yamlDocumentsToString([patchBody]) : '',
+      rawManifest: !isEmpty(patchBody) && isTextManifest ? yamlDocumentsToString(patchBody) : '',
     };
   }
 
@@ -85,10 +86,12 @@ export class PatchManifestStageForm extends React.Component<
     this.setState({
       rawManifest,
     });
-    this.props.formik.setFieldValue('patchBody', manifests[0]);
+    this.props.formik.setFieldValue('patchBody', manifests);
   };
 
-  private onManifestSelectorChange = (): void => {};
+  private onManifestSelectorChange = (): void => {
+    this.props.stageFieldUpdated();
+  };
 
   private getSourceOptions = (): Array<Option<string>> => {
     return map([this.textSource, this.artifactSource], option => ({
@@ -114,8 +117,7 @@ export class PatchManifestStageForm extends React.Component<
           <RadioButtonInput
             options={this.getSourceOptions()}
             onChange={(e: any) => this.props.formik.setFieldValue('source', e.target.value)}
-            value={stage.source || 'text'}
-            inline={true}
+            value={stage.source}
           />
         </StageConfigField>
         {stage.source === this.textSource && (
@@ -155,8 +157,8 @@ export class PatchManifestStageForm extends React.Component<
         <hr />
         <h4>Patch Options</h4>
         <PatchManifestOptionsForm
-          strategy={!!stage.options && stage.options.strategy}
-          onStrategyChange={(strategy: string) => this.props.formik.setFieldValue('options.strategy', strategy)}
+          strategy={!!stage.options && stage.options.mergeStrategy}
+          onStrategyChange={(strategy: string) => this.props.formik.setFieldValue('options.mergeStrategy', strategy)}
           record={!!stage.options && stage.options.record}
           onRecordChange={(record: boolean) => this.props.formik.setFieldValue('options.record', record)}
         />

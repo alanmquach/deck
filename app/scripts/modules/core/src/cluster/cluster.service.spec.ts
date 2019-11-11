@@ -1,6 +1,7 @@
 import { IHttpBackendService, mock } from 'angular';
 import { find } from 'lodash';
 
+import { REACT_MODULE } from 'core/reactShims';
 import * as State from 'core/state';
 import { ApplicationModelBuilder } from 'core/application/applicationModel.builder';
 import { IInstanceCounts, IServerGroup } from 'core/domain';
@@ -13,7 +14,7 @@ import { SETTINGS } from 'core/config/settings';
 const ClusterState = State.ClusterState;
 
 describe('Service: Cluster', function() {
-  beforeEach(mock.module(CLUSTER_SERVICE));
+  beforeEach(mock.module(CLUSTER_SERVICE, REACT_MODULE));
 
   let clusterService: ClusterService;
   let $http: IHttpBackendService;
@@ -28,10 +29,6 @@ describe('Service: Cluster', function() {
     };
   }
 
-  beforeEach(() => {
-    State.initialize();
-  });
-
   beforeEach(
     mock.inject(($httpBackend: IHttpBackendService, _clusterService_: ClusterService) => {
       $http = $httpBackend;
@@ -39,9 +36,9 @@ describe('Service: Cluster', function() {
 
       application = ApplicationModelBuilder.createApplicationForTests(
         'app',
-        { key: 'serverGroups' },
-        { key: 'runningExecutions' },
-        { key: 'runningTasks' },
+        { key: 'serverGroups', defaultData: [] },
+        { key: 'runningExecutions', defaultData: [] },
+        { key: 'runningTasks', defaultData: [] },
       );
       application.getDataSource('serverGroups').data = [
         { name: 'the-target', account: 'not-the-target', region: 'us-east-1' },
@@ -52,6 +49,8 @@ describe('Service: Cluster', function() {
       ];
     }),
   );
+
+  beforeEach(() => State.initialize());
 
   describe('lazy cluster fetching', () => {
     it('switches to lazy cluster fetching if there are more than the on demand threshold for clusters', () => {

@@ -5,6 +5,7 @@ import { CHAOS_MONKEY_CONFIG_COMPONENT } from 'core/chaosMonkey/chaosMonkeyConfi
 import { TRAFFIC_GUARD_CONFIG_COMPONENT } from './trafficGuard/trafficGuardConfig.component';
 import { SETTINGS } from 'core/config/settings';
 import { ApplicationWriter } from 'core/application/service/ApplicationWriter';
+import { DELETE_APPLICATION_SECTION } from './deleteApplicationSection.module';
 
 const angular = require('angular');
 
@@ -13,8 +14,8 @@ module.exports = angular
     require('@uirouter/angularjs').default,
     require('./applicationAttributes.directive').name,
     require('./applicationNotifications.directive').name,
-    require('./deleteApplicationSection.directive').name,
     require('./applicationSnapshotSection.component').name,
+    DELETE_APPLICATION_SECTION,
     APPLICATION_DATA_SOURCE_EDITOR,
     CHAOS_MONKEY_CONFIG_COMPONENT,
     TRAFFIC_GUARD_CONFIG_COMPONENT,
@@ -28,7 +29,7 @@ module.exports = angular
       this.application = app;
       this.isDataSourceEnabled = key => app.dataSources.some(ds => ds.key === key && ds.disabled === false);
       this.feature = SETTINGS.feature;
-      if (app.notFound) {
+      if (app.notFound || app.hasError) {
         $state.go('home.infrastructure', null, { location: 'replace' });
       } else {
         this.application.attributes.instancePort =
@@ -57,5 +58,24 @@ module.exports = angular
             this.bannerConfigProps.saveError = true;
           });
       };
+
+      this.notifications = [];
+      this.updateNotifications = notifications => {
+        $scope.$applyAsync(() => {
+          this.notifications = notifications;
+        });
+      };
+
+      if (this.feature.managedResources) {
+        this.hasManagedResources = false;
+        this.application
+          .getDataSource('managedResources')
+          .ready()
+          .then(({ hasManagedResources }) => {
+            $scope.$applyAsync(() => {
+              this.hasManagedResources = hasManagedResources;
+            });
+          });
+      }
     },
   ]);

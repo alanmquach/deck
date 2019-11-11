@@ -7,9 +7,10 @@ module.exports = angular
   .component('gceAutoscalingPolicyBasicSettings', {
     bindings: {
       policy: '=',
+      updatePolicy: '<',
     },
     templateUrl: require('./basicSettings.component.html'),
     controller: function controller() {
-      this.modes = ['ON', 'OFF', 'ONLY_UP', 'ONLY_DOWN'];
+      this.modes = ['ON', 'OFF', 'ONLY_UP'];
     },
   });

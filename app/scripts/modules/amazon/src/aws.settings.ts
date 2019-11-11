@@ -15,8 +15,9 @@ export interface IAWSProviderSettings extends IProviderSettings {
   };
   defaultSecurityGroups?: string[];
   loadBalancers?: {
-    inferInternalFlagFromSubnet: boolean;
     certificateTypes?: string[];
+    disableManualOidcDialog?: boolean;
+    inferInternalFlagFromSubnet: boolean;
   };
   useAmiBlockDeviceMappings?: boolean;
   classicLaunchLockout?: number;
@@ -26,6 +27,17 @@ export interface IAWSProviderSettings extends IProviderSettings {
   };
   minRootVolumeSize?: number;
   disableSpotPricing?: boolean;
+  createLoadBalancerWarnings?: {
+    network?: string;
+    application?: string;
+    classic?: string;
+  };
+  instanceTypes?: {
+    exclude?: {
+      categories?: string[];
+      families?: string[];
+    };
+  };
 }
 
 export const AWSProviderSettings: IAWSProviderSettings = (SETTINGS.providers.aws as IAWSProviderSettings) || {

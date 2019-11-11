@@ -28,7 +28,8 @@ import {
   VpcReader,
 } from '@spinnaker/amazon';
 
-import { IJobDisruptionBudget } from 'titus/domain';
+import { IJobDisruptionBudget, ITitusResources } from 'titus/domain';
+import { ITitusServiceJobProcesses } from 'titus/domain/ITitusServiceJobProcesses';
 
 export interface ITitusServerGroupCommandBackingData extends IServerGroupCommandBackingData {
   accounts: string[];
@@ -80,13 +81,7 @@ export interface ITitusServerGroupCommand extends IServerGroupCommand {
   digest?: string;
   image: string;
   inService: boolean;
-  resources: {
-    cpu: number;
-    memory: number;
-    disk: number;
-    networkMbps: number;
-    gpu: number;
-  };
+  resources: ITitusResources;
   efs: {
     efsId: string;
     mountPoint: string;
@@ -107,6 +102,7 @@ export interface ITitusServerGroupCommand extends IServerGroupCommand {
     hard: { [key: string]: string };
     soft: { [key: string]: string };
   };
+  serviceJobProcesses: ITitusServiceJobProcesses;
 }
 
 export class TitusServerGroupConfigurationService {
@@ -171,7 +167,12 @@ export class TitusServerGroupConfigurationService {
       .then((backingData: any) => {
         backingData.accounts = Object.keys(backingData.credentialsKeyedByAccount);
         backingData.filtered = {};
-        backingData.filtered.regions = backingData.credentialsKeyedByAccount[cmd.credentials].regions;
+        if (cmd.credentials.includes('${')) {
+          // If our dependency is an expression, the only thing we can really do is to just preserve current selections
+          backingData.filtered.regions = [{ name: cmd.region }];
+        } else {
+          backingData.filtered.regions = (backingData.credentialsKeyedByAccount[cmd.credentials] || []).regions || [];
+        }
         cmd.backingData = backingData;
         backingData.filtered.securityGroups = this.getRegionalSecurityGroups(cmd);
         let securityGroupRefresher = $q.when();
@@ -210,40 +211,45 @@ export class TitusServerGroupConfigurationService {
 
   private configureSecurityGroupOptions(command: ITitusServerGroupCommand): void {
     const currentOptions = command.backingData.filtered.securityGroups;
-    const newRegionalSecurityGroups = this.getRegionalSecurityGroups(command);
-    const isExpression =
-      typeof command.securityGroups === 'string' && (command.securityGroups as string).includes('${');
-    if (currentOptions && command.securityGroups && !isExpression) {
-      // not initializing - we are actually changing groups
-      const currentGroupNames: string[] = command.securityGroups.map((groupId: string) => {
-        const match = currentOptions.find(o => o.id === groupId);
-        return match ? match.name : groupId;
+    if (command.credentials.includes('${') || command.region.includes('${')) {
+      // If any of our dependencies are expressions, the only thing we can do is preserve current values
+      command.backingData.filtered.securityGroups = command.securityGroups.map(group => ({ name: group, id: group }));
+    } else {
+      const newRegionalSecurityGroups = this.getRegionalSecurityGroups(command);
+      const isExpression =
+        typeof command.securityGroups === 'string' && (command.securityGroups as string).includes('${');
+      if (currentOptions && command.securityGroups && !isExpression) {
+        // not initializing - we are actually changing groups
+        const currentGroupNames: string[] = command.securityGroups.map((groupId: string) => {
+          const match = currentOptions.find(o => o.id === groupId);
+          return match ? match.name : groupId;
+        });
+
+        const matchedGroups = command.securityGroups
+          .map((groupId: string) => {
+            const securityGroup: any = currentOptions.find(o => o.id === groupId || o.name === groupId);
+            return securityGroup ? securityGroup.name : null;
+          })
+          .map((groupName: string) => newRegionalSecurityGroups.find(g => g.name === groupName))
+          .filter((group: any) => group);
+
+        const matchedGroupNames: string[] = matchedGroups.map(g => g.name);
+        const removed: string[] = xor(currentGroupNames, matchedGroupNames);
+        command.securityGroups = matchedGroups.map(g => g.id);
+        if (removed.length) {
+          command.viewState.dirty.securityGroups = removed;
+        }
+      }
+      command.backingData.filtered.securityGroups = newRegionalSecurityGroups.sort((a, b) => {
+        if (command.securityGroups.includes(a.id)) {
+          return -1;
+        }
+        if (command.securityGroups.includes(b.id)) {
+          return 1;
+        }
+        return a.name.localeCompare(b.name);
       });
-
-      const matchedGroups = command.securityGroups
-        .map((groupId: string) => {
-          const securityGroup: any = currentOptions.find(o => o.id === groupId || o.name === groupId);
-          return securityGroup ? securityGroup.name : null;
-        })
-        .map((groupName: string) => newRegionalSecurityGroups.find(g => g.name === groupName))
-        .filter((group: any) => group);
-
-      const matchedGroupNames: string[] = matchedGroups.map(g => g.name);
-      const removed: string[] = xor(currentGroupNames, matchedGroupNames);
-      command.securityGroups = matchedGroups.map(g => g.id);
-      if (removed.length) {
-        command.viewState.dirty.securityGroups = removed;
-      }
     }
-    command.backingData.filtered.securityGroups = newRegionalSecurityGroups.sort((a, b) => {
-      if (command.securityGroups.includes(a.id)) {
-        return -1;
-      }
-      if (command.securityGroups.includes(b.id)) {
-        return 1;
-      }
-      return a.name.localeCompare(b.name);
-    });
   }
 
   public refreshSecurityGroups(command: ITitusServerGroupCommand, skipCommandReconfiguration: boolean): IPromise<void> {
@@ -294,19 +300,25 @@ export class TitusServerGroupConfigurationService {
 
   public configureLoadBalancerOptions(command: ITitusServerGroupCommand) {
     const currentTargetGroups = command.targetGroups || [];
-    const allTargetGroups = this.getTargetGroupNames(command);
+    if (command.credentials.includes('${') || command.region.includes('${')) {
+      // If any of our dependencies are expressions, the only thing we can do is preserve current values
+      command.targetGroups = currentTargetGroups;
+      (command.backingData.filtered as any).targetGroups = currentTargetGroups;
+    } else {
+      const allTargetGroups = this.getTargetGroupNames(command);
 
-    if (currentTargetGroups && command.targetGroups) {
-      const matched = intersection(allTargetGroups, currentTargetGroups);
-      const removedTargetGroups = xor(matched, currentTargetGroups);
-      command.targetGroups = intersection(allTargetGroups, matched);
-      if (removedTargetGroups && removedTargetGroups.length > 0) {
-        command.viewState.dirty.targetGroups = removedTargetGroups;
-      } else {
-        delete command.viewState.dirty.targetGroups;
+      if (currentTargetGroups && command.targetGroups) {
+        const matched = intersection(allTargetGroups, currentTargetGroups);
+        const removedTargetGroups = xor(matched, currentTargetGroups);
+        command.targetGroups = intersection(allTargetGroups, matched);
+        if (removedTargetGroups && removedTargetGroups.length > 0) {
+          command.viewState.dirty.targetGroups = removedTargetGroups;
+        } else {
+          delete command.viewState.dirty.targetGroups;
+        }
       }
+      (command.backingData.filtered as any).targetGroups = allTargetGroups;
     }
-    (command.backingData.filtered as any).targetGroups = allTargetGroups;
   }
 
   public refreshLoadBalancers(command: ITitusServerGroupCommand) {
