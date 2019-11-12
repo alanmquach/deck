@@ -1,0 +1,25 @@
+name: Publish titus
+
+on:
+  push:
+    branches:
+      - 'actions'
+    paths:
+      - 'app/scripts/modules/titus/package.json'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v1
+      - name: Use Node.js 10.15.1
+        uses: actions/setup-node@v1
+        with:
+          node-version: 10.15.1
+      - name: yarn install, run publish
+        run: |
+          yarn install
+          echo "This action was kicked off against the sha: ${GITHUB_SHA}"
+        env:
+          CI: true
