@@ -1,11 +1,11 @@
-name: Publish packages
+name: Publish core
 
 on:
   push:
     branches:
       - 'actions'
     paths:
-      - 'app/scripts/modules/**/package.json'
+      - 'app/scripts/modules/core/package.json'
 
 jobs:
   build:
@@ -20,6 +20,6 @@ jobs:
       - name: yarn install, run publish
         run: |
           yarn install
-          yarn run publish
+          echo "This action was kicked off against the sha: ${GITHUB_SHA}"
         env:
           CI: true
