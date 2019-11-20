@@ -4,7 +4,7 @@
   "main": "lib/lib.js",
   "typings": "lib/index.d.ts",
   "scripts": {
-    "foo": "echo foo123456",
+    "foo": "echo foo1234567",
     "clean": "../../../../node_modules/rimraf/bin.js lib",
     "lib": "npm run clean && ../../../../node_modules/typescript/bin/tsc && node ../../../../node_modules/webpack/bin/webpack.js",
     "prepublishOnly": "npm run lib"
