@@ -17,9 +17,10 @@ jobs:
         uses: actions/setup-node@v1
         with:
           node-version: 10.15.1
-      - name: yarn install, run publish
+      - name: publish amazon
         run: |
           yarn install
           echo "This action was kicked off against the sha: ${GITHUB_SHA}"
+          app/scripts/modules/github_actions_publish.sh amazon
         env:
           CI: true
