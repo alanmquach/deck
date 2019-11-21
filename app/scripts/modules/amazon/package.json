@@ -1,10 +1,10 @@
 {
   "name": "@spinnaker/amazon",
-  "version": "0.0.223",
+  "version": "0.0.224",
   "main": "lib/lib.js",
   "typings": "lib/index.d.ts",
   "scripts": {
-    "foo": "bar",
+    "foo": "bar 1",
     "clean": "../../../../node_modules/rimraf/bin.js lib",
     "lib": "npm run clean && ../../../../node_modules/typescript/bin/tsc && node ../../../../node_modules/webpack/bin/webpack.js",
     "prepublishOnly": "npm run lib"
