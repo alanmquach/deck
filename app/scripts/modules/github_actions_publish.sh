@@ -56,6 +56,7 @@ else
     echo "Deck package publisher ---> The last commit (${LAST_PKGJSON_COMMIT}) did not contain a version bump. Exiting without publishing."
     exit 42
   fi
+  echo "Deck package publisher ---> Looks good! Version bump was the only change. Let's get publishing..."
 fi
 
 # Ensure that the last commit that modified <module>/package.json contains a version bump ONLY
