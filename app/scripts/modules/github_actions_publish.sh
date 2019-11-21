@@ -23,15 +23,48 @@ if [ "x${GITHUB_ACTIONS}" != "xtrue" ] ; then
   exit 2
 fi
 
-# Check that the module exist
+# Check that the module exists and the last commit modifying <module>/package.json contains a version bump ONLY
 echo "Deck package publisher ---> Checking that (${MODULE}) exist..."
 CWD=`pwd`
-for DIR in ${MODULE} ; do
-  if [ ! -e ${DIR}/package.json ] ; then
-    echo "$CWD/${DIR}/package.json does not exist"
-    exit 3
+if [ ! -e ${MODULE}/package.json ] ; then
+  echo "$CWD/${MODULE}/package.json does not exist"
+  exit 3
+else
+  LAST_PKGJSON_COMMIT=`git log -n 1 --pretty=format:%H -- ${MODULE}/package.json`
+  echo "Deck package publisher ---> Checking that the last commit (${LAST_PKGJSON_COMMIT}) contains a version bump ONLY..."
+  HAS_PKG_BUMP=`git diff ${LAST_PKGJSON_COMMIT}..${LAST_PKGJSON_COMMIT}~1 -- ${MODULE}/package.json | grep '"version"' | wc -l`
+  if [ $HAS_PKG_BUMP -ne 0 ] ; then
+    echo "Deck package publisher ---> Version bump detected indeed. Checking that it is the only line changed..."
+    PKG_JSON_OTHER_CHANGES=`git diff --numstat ${LAST_PKGJSON_COMMIT}..${LAST_PKGJSON_COMMIT}~1 -- ${MODULE}/package.json | cut -f 1`
+    if [ $PKG_JSON_OTHER_CHANGES -ne 1 ] ; then
+      echo "Deck package publisher ---> Other changes found in (${MODULE}/package.json) ..."
+      echo "=========================================="
+      echo ""
+      git diff ${LAST_PKGJSON_COMMIT}..${LAST_PKGJSON_COMMIT}~1 -- ${MODULE}/package.json
+      echo ""
+      echo "=========================================="
+      echo "Deck package publisher ---> Version bumps must be the ONLY changes..."
+      exit 24
+    fi
+  else
+    echo "Deck package publisher ---> The last commit (${LAST_PKGJSON_COMMIT}) did not contain a version bump..."
+    echo "=========================================="
+    echo ""
+    git diff ${LAST_PKGJSON_COMMIT}..${LAST_PKGJSON_COMMIT}~1 -- ${MODULE}/package.json
+    echo ""
+    echo "=========================================="
+    echo "Deck package publisher ---> The last commit (${LAST_PKGJSON_COMMIT}) did not contain a version bump. Exiting without publishing."
+    exit 42
   fi
-done
+fi
+
+# Ensure that the last commit that modified <module>/package.json contains a version bump ONLY
+echo "Deck package publisher ---> Checking that (${MODULE}) exist..."
+CWD=`pwd`
+if [ ! -e ${DIR}/package.json ] ; then
+  echo "$CWD/${DIR}/package.json does not exist"
+  exit 3
+fi
 
 # Run yarn
 echo "Deck package publisher ---> Updating to latest dependencies..."
@@ -53,7 +86,6 @@ for DIR in ${BUILDORDER} ; do
   pushd ${DIR} > /dev/null
   if [ "${DIR}" == "${MODULE}" ] ; then
     echo "Deck package publisher ---> Publishing ${MODULE}..."
-    # npm config set //registry.npmjs.org/:_authToken=$NODE_AUTH_TOKEN
     echo "npm publish"
   else
     echo "Deck package publisher ---> Building (but not publishing) upstream dependency '${DIR}'..."

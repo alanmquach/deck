@@ -1,11 +1,11 @@
-name: Publish core
+name: Publish titus
 
 on:
   push:
     branches:
       - 'actions'
     paths:
-      - 'app/scripts/modules/core/package.json'
+      - 'app/scripts/modules/titus/package.json'
 
 jobs:
   build:
@@ -17,10 +17,10 @@ jobs:
         uses: actions/setup-node@v1
         with:
           node-version: 10.15.1
-      - name: publish amazon
+      - name: publish titus
         run: |
-          yarn install
-          echo "This action was kicked off against the sha: ${GITHUB_SHA}"
-          app/scripts/modules/github_actions_publish.sh amazon
+          npm config set //registry.npmjs.org/:_authToken=$NPM_AUTH_TOKEN
+          app/scripts/modules/github_actions_publish.sh titus
         env:
           CI: true
+          NPM_AUTH_TOKEN: ${{ secrets.NOT_A_SECRET }}
