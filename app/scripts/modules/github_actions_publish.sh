@@ -61,8 +61,8 @@ fi
 # Ensure that the last commit that modified <module>/package.json contains a version bump ONLY
 echo "Deck package publisher ---> Checking that (${MODULE}) exist..."
 CWD=`pwd`
-if [ ! -e ${DIR}/package.json ] ; then
-  echo "$CWD/${DIR}/package.json does not exist"
+if [ ! -e ${MODULE}/package.json ] ; then
+  echo "$CWD/${MODULE}/package.json does not exist"
   exit 3
 fi
 
