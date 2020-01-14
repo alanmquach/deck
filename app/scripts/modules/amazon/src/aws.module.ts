@@ -66,6 +66,7 @@ import { AMAZON_INSTANCE_AWSINSTANCETYPE_SERVICE } from './instance/awsInstanceT
 import { AMAZON_INSTANCE_DETAILS_INSTANCE_DETAILS_CONTROLLER } from './instance/details/instance.details.controller';
 import { AMAZON_SEARCH_SEARCHRESULTFORMATTER } from './search/searchResultFormatter';
 import { AWS_EVALUATE_CLOUD_FORMATION_CHANGE_SET_EXECUTION_SERVICE } from './pipeline/stages/deployCloudFormation/evaluateCloudFormationChangeSetExecution.service';
+import { AmazonLoadBalancerDetails } from './loadBalancer/details/AmazonLoadBalancerDetails';
 
 // load all templates into the $templateCache
 const templates = require.context('./', true, /\.html$/);
@@ -144,6 +145,7 @@ module(AMAZON_MODULE, [
     },
     loadBalancer: {
       transformer: AwsLoadBalancerTransformer,
+      details: AmazonLoadBalancerDetails,
       detailsTemplateUrl: require('./loadBalancer/details/loadBalancerDetails.html'),
       detailsController: 'awsLoadBalancerDetailsCtrl',
       CreateLoadBalancerModal: AmazonLoadBalancerChoiceModal,

@@ -45,6 +45,7 @@ export interface IAmazonLoadBalancerSourceData extends ILoadBalancerSourceData {
   cloudProvider: string;
   createdTime: number;
   dnsname: string;
+  insightActions?: Array<{ url: string; label: string }>;
   loadBalancerName: string;
   loadBalancerType?: string;
   name: string;

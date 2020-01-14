@@ -30,7 +30,7 @@ export class LoadBalancerReader {
       });
   }
 
-  public getLoadBalancerDetails(
+  public static getLoadBalancerDetails(
     cloudProvider: string,
     account: string,
     region: string,
@@ -42,6 +42,15 @@ export class LoadBalancerReader {
       .all(name)
       .withParams({ provider: cloudProvider })
       .get();
+  }
+
+  public getLoadBalancerDetails(
+    cloudProvider: string,
+    account: string,
+    region: string,
+    name: string,
+  ): IPromise<ILoadBalancerSourceData[]> {
+    return LoadBalancerReader.getLoadBalancerDetails(cloudProvider, account, region, name);
   }
 
   public listLoadBalancers(cloudProvider: string): IPromise<ILoadBalancersByAccount[]> {
