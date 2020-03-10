@@ -96,7 +96,8 @@ export class ManagedReader {
       .one('application', app)
       .withParams({ includeDetails: true, entities: ['resources', 'artifacts', 'environments'] })
       .get()
-      .then(this.decorateResources);
+      .then(this.decorateResources)
+      .then(() => this.getFakeRealData(app));
   }
 
   public static getResourceHistory(resourceId: string): IPromise<IManagedResourceEventHistory> {
@@ -111,5 +112,107 @@ export class ManagedReader {
         });
         return response as IManagedResourceEventHistory;
       });
+  }
+
+  public static getFakeRealData(app: string): IPromise<IManagedApplicationSummary> {
+    return API.one('applications', app)
+      .get()
+      .then(() =>
+        JSON.parse(
+          JSON.stringify({
+            applicationPaused: false,
+            hasManagedResources: true,
+            resources: [
+              {
+                id: 'titus:cluster:titustestvpc:serverlablpollo',
+                kind: 'titus/cluster@v1',
+                status: ManagedResourceStatus.ACTUATING,
+                moniker: {
+                  app: 'serverlablpollo',
+                },
+                isPaused: false,
+                // TODO: This attribute is not yet returned by the API
+                // artifact: {
+                //   name: 'spkr/mddemo-titus',
+                //   type: 'docker',
+                //   statuses: [],
+                //   versions: {
+                //     current: 'latest',
+                //     pending: [],
+                //     approved: [],
+                //     previous: ['oldest'],
+                //     vetoed: [],
+                //   },
+                // },
+                locations: {
+                  account: 'titustestvpc',
+                  vpc: 'vpc0',
+                  regions: [
+                    {
+                      name: 'eu-west-1',
+                    },
+                    {
+                      name: 'us-east-1',
+                    },
+                    {
+                      name: 'us-west-2',
+                    },
+                  ],
+                },
+              },
+            ],
+            environments: [
+              {
+                artifacts: [
+                  {
+                    name: 'spkr/mddemo-titus',
+                    type: 'docker',
+                    statuses: [],
+                    versions: {
+                      current: 'latest',
+                      pending: [],
+                      approved: [],
+                      previous: ['oldest'],
+                      vetoed: [],
+                    },
+                  },
+                ],
+                name: 'test',
+                resources: ['titus:cluster:titustestvpc:serverlablpollo'],
+              },
+            ],
+            artifacts: [
+              {
+                name: 'spkr/mddemo-titus',
+                type: 'docker',
+                versions: [
+                  {
+                    version: 'latest',
+                    environments: [
+                      {
+                        name: 'test',
+                        state: 'CURRENT',
+                        deployedAt: '2020-03-04T13:20:03Z',
+                      },
+                    ],
+                  },
+                  {
+                    version: 'oldest',
+                    environments: [
+                      {
+                        name: 'test',
+                        state: 'PREVIOUS',
+                        deployedAt: '2020-03-03T13:20:03Z',
+                        replacedAt: '2020-03-04T13:20:03Z',
+                        replacedBy: 'latest',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+      );
   }
 }
