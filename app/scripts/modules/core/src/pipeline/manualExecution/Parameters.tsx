@@ -75,6 +75,9 @@ export class Parameters extends React.Component<IParametersProps> {
                     input={(props) => (
                       <ReactSelectInput
                         {...props}
+                        // value={parameter.multi ? props.value?.split(',') : props.value}
+                        multi={parameter.multi}
+                        simpleValue={parameter.multi}
                         clearable={false}
                         inputClassName="parameter-option-select"
                         options={parameter.options.map((o) => ({ label: `${o.value}`, value: o.value }))}

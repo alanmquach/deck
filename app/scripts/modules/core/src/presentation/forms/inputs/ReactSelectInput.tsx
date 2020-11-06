@@ -32,7 +32,11 @@ export const reactSelectValidationErrorStyle = {
  */
 export const reactSelectOnChangeAdapter = (name: string, onChange: IReactSelectInputProps['onChange']) => {
   return (selection: Option | Option[]) => {
-    const value = !selection ? null : Array.isArray(selection) ? selection.map((x) => x.value) : selection.value;
+    const value = !selection
+      ? null
+      : Array.isArray(selection)
+      ? selection.map((x) => x.value)
+      : selection.value ?? selection;
     const target = { name, value };
     const event = createFakeReactSyntheticEvent(target);
     return (onChange || noop)(event);
