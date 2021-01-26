@@ -26,6 +26,7 @@ export interface ISingleExecutionDetailsState {
   pipelineConfig?: IPipeline;
   sortFilter: ISortFilter;
   stateNotFound: boolean;
+  ancestors: IExecution[];
 }
 
 export interface ISingleExecutionStateParams {
@@ -53,6 +54,7 @@ export class SingleExecutionDetails extends React.Component<
       execution: null,
       sortFilter: ExecutionState.filterModel.asFilterModel.sortFilter,
       stateNotFound: false,
+      ancestors: [],
     };
   }
 
@@ -75,7 +77,7 @@ export class SingleExecutionDetails extends React.Component<
           this.executionScheduler.unsubscribe();
           this.executionLoader.unsubscribe();
         }
-        this.setState({ execution });
+        this.setState({ execution, ancestors: this.traverseLineage(execution) });
 
         app.pipelineConfigs.activate();
         app.pipelineConfigs.ready().then(() => {
@@ -149,12 +151,28 @@ export class SingleExecutionDetails extends React.Component<
     });
   };
 
+  private traverseLineage = (execution: IExecution): IExecution[] => {
+    const lineage: IExecution[] = [];
+    if (!execution) {
+      return lineage;
+    }
+    let current = execution;
+    while (current.trigger?.parentExecution) {
+      current = current.trigger.parentExecution;
+      ExecutionsTransformer.transformExecution(this.props.app, current);
+      lineage.unshift(current);
+    }
+    return lineage;
+  };
+
   public render() {
     const { app } = this.props;
-    const { execution, pipelineConfig, sortFilter, stateNotFound } = this.state;
+    const { execution, pipelineConfig, sortFilter, stateNotFound, ancestors } = this.state;
 
     const defaultExecutionParams = { application: app.name, executionId: execution ? execution.id : '' };
     const executionParams = ReactInjector.$state.params.executionParams || defaultExecutionParams;
+
+    // const ancestors = this.traverseLineage(execution);
 
     return (
       <div style={{ width: '100%', paddingTop: 0 }}>
@@ -203,6 +221,26 @@ export class SingleExecutionDetails extends React.Component<
             </div>
           </div>
         )}
+        {ancestors.length > 0 &&
+          ancestors.map((ancestor) => (
+            <div className="row">
+              <div className="col-md-10 col-md-offset-1 executions">
+                <Execution
+                  execution={ancestor}
+                  application={app}
+                  pipelineConfig={null}
+                  standalone={true}
+                  showDurations={sortFilter.showDurations}
+                  onRerun={
+                    pipelineConfig &&
+                    (() => {
+                      this.rerunExecution(ancestor);
+                    })
+                  }
+                />
+              </div>
+            </div>
+          ))}
         {execution && (
           <div className="row">
             <div className="col-md-10 col-md-offset-1 executions">
