@@ -52,9 +52,9 @@ export function PipelineStageExecutionDetails(props: IExecutionDetailsSectionPro
                   executionId: stage.context.executionId,
                   executionParams: { application: application.name, executionId: execution.id },
                 }}
-                options={{ inherit: false, reload: 'home.applications.application.pipelines.executionDetails' }}
+                options={{ inherit: false }}
               >
-                <a target="_self">View Pipeline Execution</a>
+                <a>View Pipeline Execution</a>
               </UISref>
             )}
           </div>
