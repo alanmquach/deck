@@ -35,6 +35,7 @@ import './execution.less';
 export interface IExecutionProps {
   application: Application;
   execution: IExecution;
+  child?: string;
   pipelineConfig: IPipeline;
   showDurations?: boolean;
   standalone?: boolean;
@@ -56,6 +57,17 @@ export interface IExecutionState {
   restartDetails: IRestartDetails;
   runningTimeInMs: number;
 }
+
+// eslint-disable-next-line
+const log = (..._args: any[]) => {};
+const findChildIndex = (child: string, execution: IExecution, callsite: string) => {
+  const result = execution.stageSummaries?.findIndex(
+    (s) => s.type === 'pipeline' && s.masterStage?.context?.executionId === child,
+  );
+
+  log(`[${execution.id}] [${callsite}] Returning index ${result} for child executionId=${child}`, execution);
+  return result;
+};
 
 export class Execution extends React.PureComponent<IExecutionProps, IExecutionState> {
   public static defaultProps: Partial<IExecutionProps> = {
@@ -80,6 +92,10 @@ export class Execution extends React.PureComponent<IExecutionProps, IExecutionSt
       canConfigure: false,
     };
 
+    if ($stateParams.executionId !== props.execution.id) {
+      initialViewState.activeStageId = findChildIndex(props.child, props.execution, ` init `); //props.execution.stageSummaries?.findIndex(s => s.type === 'pipeline' && s.masterStage?.context?.executionId === props.child)
+    }
+
     const restartedStage = execution.stages.find((stage) => stage.context.restartDetails !== undefined);
 
     this.state = {
@@ -101,13 +117,25 @@ export class Execution extends React.PureComponent<IExecutionProps, IExecutionSt
     const newViewState = { ...viewState };
     newViewState.activeStageId = Number(toParams.stage);
     newViewState.activeSubStageId = Number(toParams.subStage);
+
+    log(
+      `[${executionId}] viewState.activeStageId set to ${newViewState.activeStageId} in updateViewStateDetails based on toParams`,
+      toParams,
+    );
+    if (toParams.executionId !== this.props.execution.id) {
+      newViewState.activeStageId = findChildIndex(this.props.child, this.props.execution, `update`); //this.props.execution.stageSummaries?.findIndex(s => s.type === 'pipeline' && s.masterStage?.context?.executionId === this.props.child)
+    }
+
     if (this.state.showingDetails !== shouldShowDetails) {
+      log(`[${executionId}] if`, newViewState);
       this.setState({
         showingDetails: this.invalidateShowingDetails(this.props, shouldScroll),
         viewState: newViewState,
       });
     } else {
+      log(`[${executionId}] else`);
       if (this.state.showingDetails && !isEqual(viewState, newViewState)) {
+        log(`[${executionId}] else if`, newViewState);
         this.setState({ viewState: newViewState });
       }
     }
@@ -297,7 +325,7 @@ export class Execution extends React.PureComponent<IExecutionProps, IExecutionSt
       pipelineConfig,
     } = this.props;
     const { pipelinesUrl, restartDetails, showingDetails, sortFilter, viewState } = this.state;
-    const { $state } = ReactInjector;
+    const { $state, $stateParams } = ReactInjector;
 
     const accountLabels = this.props.execution.deploymentTargets.map((account) => (
       <AccountTag key={account} account={account} />
@@ -305,15 +333,28 @@ export class Execution extends React.PureComponent<IExecutionProps, IExecutionSt
 
     const executionMarkerWidth = `${100 / execution.stageSummaries.length}%`;
     const showExecutionName = standalone || (!title && sortFilter.groupBy !== 'name');
-    const executionMarkers = execution.stageSummaries.map((stage) => (
+    const executionMarkers = execution.stageSummaries.map((stage, index, allStages) => (
       <ExecutionMarker
         key={stage.refId}
         application={application}
         execution={execution}
         stage={stage}
         onClick={this.toggleDetails}
-        active={this.isActive(stage.index)}
-        previousStageActive={this.isActive(stage.index - 1)}
+        active={
+          this.props.execution.id === $stateParams.executionId
+            ? this.isActive(stage.index)
+            : this.props.child &&
+              stage.type === 'pipeline' &&
+              stage.masterStage?.context?.executionId === this.props.child
+        }
+        previousStageActive={
+          this.props.execution.id === $stateParams.executionId
+            ? this.isActive(stage.index - 1)
+            : this.props.child &&
+              index > 0 &&
+              allStages[index - 1].type === 'pipeline' &&
+              allStages[index - 1].masterStage?.context?.executionId === this.props.child
+        }
         width={executionMarkerWidth}
       />
     ));
@@ -334,7 +375,8 @@ export class Execution extends React.PureComponent<IExecutionProps, IExecutionSt
             <h4 className="execution-name">
               {(showAccountLabels || showExecutionName) && accountLabels}
               {execution.fromTemplate && <i className="from-template fa fa-table" title="Pipeline from template" />}
-              {title || execution.name}
+              {title || execution.name} {execution.id}-{`>`}
+              {this.props.child}
             </h4>
           )}
           {hasParentExecution && (
@@ -458,7 +500,7 @@ export class Execution extends React.PureComponent<IExecutionProps, IExecutionSt
             <PipelineGraph execution={execution} onNodeClick={this.handleNodeClick} viewState={viewState} />
           </div>
         )}
-        {showingDetails && (
+        {showingDetails && (!standalone || execution.id === $stateParams.executionId) && (
           <div className="execution-details-container">
             <StageExecutionDetails execution={execution} application={application} standalone={standalone} />
             <div className="permalinks">

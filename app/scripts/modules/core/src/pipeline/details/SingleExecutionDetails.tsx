@@ -39,6 +39,9 @@ export interface ISingleExecutionRouterStateChange extends IStateChange {
   toParams: ISingleExecutionStateParams;
 }
 
+// eslint-disable-next-line
+const log = console.log;
+
 export class SingleExecutionDetails extends React.Component<
   ISingleExecutionDetailsProps,
   ISingleExecutionDetailsState
@@ -49,7 +52,7 @@ export class SingleExecutionDetails extends React.Component<
 
   constructor(props: ISingleExecutionDetailsProps) {
     super(props);
-
+    log(`${Date.now()} SingleExecutionDetails constructing`);
     this.state = {
       execution: null,
       sortFilter: ExecutionState.filterModel.asFilterModel.sortFilter,
@@ -77,7 +80,16 @@ export class SingleExecutionDetails extends React.Component<
           this.executionScheduler.unsubscribe();
           this.executionLoader.unsubscribe();
         }
-        this.setState({ execution, ancestors: this.traverseLineage(execution) });
+        const ancestors = this.traverseLineage(execution);
+        Promise.all(
+          ancestors.map((a) =>
+            executionService.getExecution(a.id).then((ancestor) => {
+              ExecutionsTransformer.transformExecution(app, ancestor);
+              return ancestor;
+            }),
+          ),
+        ).then((refreshedAncestry) => this.setState({ ancestors: refreshedAncestry }));
+        this.setState({ execution });
 
         app.pipelineConfigs.activate();
         app.pipelineConfigs.ready().then(() => {
@@ -92,6 +104,7 @@ export class SingleExecutionDetails extends React.Component<
   }
 
   public componentDidMount(): void {
+    log(`${Date.now()} SingleExecutionDetails componentDidMount`);
     this.stateChangeSuccessSubscription = ReactInjector.stateEvents.stateChangeSuccess.subscribe(
       (stateChange: ISingleExecutionRouterStateChange) => {
         if (
@@ -108,6 +121,7 @@ export class SingleExecutionDetails extends React.Component<
   }
 
   public componentWillUnmount(): void {
+    log(`${Date.now()} SingleExecutionDetails componentWillUnmount`);
     if (this.executionScheduler) {
       this.executionScheduler.unsubscribe();
     }
@@ -166,6 +180,7 @@ export class SingleExecutionDetails extends React.Component<
   };
 
   public render() {
+    log(`${Date.now()} SingleExecutionDetails render()`);
     const { app } = this.props;
     const { execution, pipelineConfig, sortFilter, stateNotFound, ancestors } = this.state;
 
@@ -222,11 +237,13 @@ export class SingleExecutionDetails extends React.Component<
           </div>
         )}
         {ancestors.length > 0 &&
-          ancestors.map((ancestor) => (
-            <div className="row">
+          ancestors.map((ancestor, i) => (
+            <div className="row" key={ancestor.id}>
               <div className="col-md-10 col-md-offset-1 executions">
                 <Execution
+                  key={ancestor.id}
                   execution={ancestor}
+                  child={i < ancestors.length - 1 ? ancestors[i + 1].id : execution.id}
                   application={app}
                   pipelineConfig={null}
                   standalone={true}
@@ -246,6 +263,7 @@ export class SingleExecutionDetails extends React.Component<
             <div className="col-md-10 col-md-offset-1 executions">
               <Execution
                 execution={execution}
+                key={execution.id}
                 application={app}
                 pipelineConfig={null}
                 standalone={true}
