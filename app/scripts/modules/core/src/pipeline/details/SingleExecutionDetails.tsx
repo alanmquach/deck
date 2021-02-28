@@ -16,6 +16,7 @@ import { ManualExecutionModal } from '../manualExecution';
 import { ExecutionsTransformer } from '../service/ExecutionsTransformer';
 
 import './singleExecutionDetails.less';
+import { ExecutionLineage, traverseLineage } from './ExecutionLineage';
 
 export interface ISingleExecutionDetailsProps {
   app: Application;
@@ -26,7 +27,7 @@ export interface ISingleExecutionDetailsState {
   pipelineConfig?: IPipeline;
   sortFilter: ISortFilter;
   stateNotFound: boolean;
-  ancestors: IExecution[];
+  transitioningToAncestor: boolean;
 }
 
 export interface ISingleExecutionStateParams {
@@ -57,16 +58,27 @@ export class SingleExecutionDetails extends React.Component<
       execution: null,
       sortFilter: ExecutionState.filterModel.asFilterModel.sortFilter,
       stateNotFound: false,
-      ancestors: [],
+      transitioningToAncestor: false,
     };
   }
 
   private getExecution() {
     const { executionService, $state } = ReactInjector;
     const { app } = this.props;
+    const { execution } = this.state;
 
     if (!app || app.notFound || app.hasError) {
       return;
+    }
+
+    // This is kinda clunky but it provides a cleaner experience when navigating around the lineage
+    // When navigating to an ancestor
+    if (
+      execution &&
+      execution.id !== $state.params.executionId &&
+      traverseLineage(execution).includes($state.params.executionId)
+    ) {
+      this.setState({ transitioningToAncestor: true });
     }
 
     executionService.getExecution($state.params.executionId).then(
@@ -80,16 +92,8 @@ export class SingleExecutionDetails extends React.Component<
           this.executionScheduler.unsubscribe();
           this.executionLoader.unsubscribe();
         }
-        const ancestors = this.traverseLineage(execution);
-        Promise.all(
-          ancestors.map((a) =>
-            executionService.getExecution(a.id).then((ancestor) => {
-              ExecutionsTransformer.transformExecution(app, ancestor);
-              return ancestor;
-            }),
-          ),
-        ).then((refreshedAncestry) => this.setState({ ancestors: refreshedAncestry }));
-        this.setState({ execution });
+
+        this.setState({ execution, transitioningToAncestor: false });
 
         app.pipelineConfigs.activate();
         app.pipelineConfigs.ready().then(() => {
@@ -98,7 +102,7 @@ export class SingleExecutionDetails extends React.Component<
         });
       },
       () => {
-        this.setState({ execution: null, stateNotFound: true });
+        this.setState({ execution: null, stateNotFound: true, transitioningToAncestor: false });
       },
     );
   }
@@ -165,29 +169,13 @@ export class SingleExecutionDetails extends React.Component<
     });
   };
 
-  private traverseLineage = (execution: IExecution): IExecution[] => {
-    const lineage: IExecution[] = [];
-    if (!execution) {
-      return lineage;
-    }
-    let current = execution;
-    while (current.trigger?.parentExecution) {
-      current = current.trigger.parentExecution;
-      ExecutionsTransformer.transformExecution(this.props.app, current);
-      lineage.unshift(current);
-    }
-    return lineage;
-  };
-
   public render() {
     log(`${Date.now()} SingleExecutionDetails render()`);
     const { app } = this.props;
-    const { execution, pipelineConfig, sortFilter, stateNotFound, ancestors } = this.state;
+    const { execution, pipelineConfig, sortFilter, stateNotFound, transitioningToAncestor } = this.state;
 
     const defaultExecutionParams = { application: app.name, executionId: execution ? execution.id : '' };
     const executionParams = ReactInjector.$state.params.executionParams || defaultExecutionParams;
-
-    // const ancestors = this.traverseLineage(execution);
 
     return (
       <div style={{ width: '100%', paddingTop: 0 }}>
@@ -236,29 +224,8 @@ export class SingleExecutionDetails extends React.Component<
             </div>
           </div>
         )}
-        {ancestors.length > 0 &&
-          ancestors.map((ancestor, i) => (
-            <div className="row" key={ancestor.id}>
-              <div className="col-md-10 col-md-offset-1 executions">
-                <Execution
-                  key={ancestor.id}
-                  execution={ancestor}
-                  child={i < ancestors.length - 1 ? ancestors[i + 1].id : execution.id}
-                  application={app}
-                  pipelineConfig={null}
-                  standalone={true}
-                  showDurations={sortFilter.showDurations}
-                  onRerun={
-                    pipelineConfig &&
-                    (() => {
-                      this.rerunExecution(ancestor);
-                    })
-                  }
-                />
-              </div>
-            </div>
-          ))}
-        {execution && (
+        {execution && <ExecutionLineage app={app} execution={execution} showDurations={sortFilter.showDurations} />}
+        {execution && !transitioningToAncestor && (
           <div className="row">
             <div className="col-md-10 col-md-offset-1 executions">
               <Execution
