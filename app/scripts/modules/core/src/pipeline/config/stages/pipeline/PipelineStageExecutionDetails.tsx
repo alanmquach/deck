@@ -50,7 +50,6 @@ export function PipelineStageExecutionDetails(props: IExecutionDetailsSectionPro
                 params={{
                   application: stage.context.application,
                   executionId: stage.context.executionId,
-                  executionParams: { application: application.name, executionId: execution.id },
                 }}
                 options={{ inherit: false }}
               >

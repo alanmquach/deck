@@ -375,8 +375,7 @@ export class Execution extends React.PureComponent<IExecutionProps, IExecutionSt
             <h4 className="execution-name">
               {(showAccountLabels || showExecutionName) && accountLabels}
               {execution.fromTemplate && <i className="from-template fa fa-table" title="Pipeline from template" />}
-              {title || execution.name} {execution.id}-{`>`}
-              {this.props.child}
+              {title || execution.name}
             </h4>
           )}
           {hasParentExecution && (

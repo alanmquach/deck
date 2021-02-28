@@ -54,7 +54,6 @@ export function MonitorPipelineStageExecutionDetails(props: IExecutionDetailsSec
                   params={{
                     application: status.application,
                     executionId: status.executionId,
-                    executionParams: { application: application.name, executionId: execution.id },
                   }}
                   options={{ inherit: false, reload: 'home.applications.application.pipelines.executionDetails' }}
                 >
