@@ -16,7 +16,7 @@ import { ManualExecutionModal } from '../manualExecution';
 import { ExecutionsTransformer } from '../service/ExecutionsTransformer';
 
 import './singleExecutionDetails.less';
-import { ExecutionLineage, traverseLineage } from './ExecutionLineage';
+// import { ExecutionLineage, traverseLineage } from './ExecutionLineage';
 
 export interface ISingleExecutionDetailsProps {
   app: Application;
@@ -27,7 +27,9 @@ export interface ISingleExecutionDetailsState {
   pipelineConfig?: IPipeline;
   sortFilter: ISortFilter;
   stateNotFound: boolean;
+  ancestry: IExecution[];
   transitioningToAncestor: boolean;
+  eagerExecutionId: string;
 }
 
 export interface ISingleExecutionStateParams {
@@ -58,8 +60,55 @@ export class SingleExecutionDetails extends React.Component<
       execution: null,
       sortFilter: ExecutionState.filterModel.asFilterModel.sortFilter,
       stateNotFound: false,
+      ancestry: [],
       transitioningToAncestor: false,
+      eagerExecutionId: '',
     };
+  }
+  private traverseLineage(execution: IExecution): string[] {
+    const lineage: string[] = [];
+    if (!execution) {
+      return lineage;
+    }
+    let current = execution;
+    // Including the deepest child (topmost, aka current, execution) in the lineage lets us
+    // also cache it inside ancestry through the below effect.
+    // This buys us snappier navigation to descendants because the entire lineage is already local
+    lineage.unshift(current.id);
+    while (current.trigger?.parentExecution) {
+      current = current.trigger.parentExecution;
+      lineage.unshift(current.id);
+    }
+    return lineage;
+  }
+
+  private getAncestry(execution: IExecution, useAncestryCache = false): Promise<IExecution[]> {
+    const lineage = this.traverseLineage(execution);
+    const cache = useAncestryCache
+      ? this.state.ancestry.reduce(
+          (acc, curr) => {
+            acc[curr.id] = curr;
+            return acc;
+          },
+          {
+            // By sticking the current execution into the cache, we get snappy navigation to descendants
+            [execution.id]: execution,
+          },
+        )
+      : {
+          [execution.id]: execution,
+        };
+
+    return Promise.all(
+      lineage.map((generation) =>
+        cache[generation]
+          ? Promise.resolve(cache[generation])
+          : ReactInjector.executionService.getExecution(generation).then((ancestor) => {
+              ExecutionsTransformer.transformExecution(this.props.app, ancestor);
+              return ancestor;
+            }),
+      ),
+    );
   }
 
   private getExecution() {
@@ -67,23 +116,35 @@ export class SingleExecutionDetails extends React.Component<
     const { app } = this.props;
     const { execution } = this.state;
 
+    const eagerExecutionId = $state.params.executionId;
+
     if (!app || app.notFound || app.hasError) {
       return;
     }
 
-    // This is kinda clunky but it provides a cleaner experience when navigating around the lineage
-    // When navigating to an ancestor
-    if (
-      execution &&
-      execution.id !== $state.params.executionId &&
-      traverseLineage(execution).includes($state.params.executionId)
-    ) {
-      this.setState({ transitioningToAncestor: true });
+    if (execution && execution.id !== eagerExecutionId) {
+      // This is kinda clunky but it provides a cleaner experience when navigating around the lineage
+      // When navigating to an ancestor
+      if (this.traverseLineage(execution).includes(eagerExecutionId)) {
+        this.setState({ transitioningToAncestor: true });
+      }
+      this.setState({ eagerExecutionId });
     }
+    // if (
+    //   execution &&
+    //   execution.id !== $state.params.executionId &&
+    //   this.traverseLineage(execution).includes($state.params.executionId)
+    // ) {
+    //   this.setState({ transitioningToAncestor: true });
+    // }
 
     executionService.getExecution($state.params.executionId).then(
       (execution) => {
         ExecutionsTransformer.transformExecution(app, execution);
+
+        this.getAncestry(execution, true).then((ancestry) => {
+          this.setState({ ancestry });
+        });
         if (execution.isActive && !this.executionScheduler) {
           this.executionScheduler = SchedulerFactory.createScheduler(5000);
           this.executionLoader = this.executionScheduler.subscribe(() => this.getExecution());
@@ -172,10 +233,28 @@ export class SingleExecutionDetails extends React.Component<
   public render() {
     log(`${Date.now()} SingleExecutionDetails render()`);
     const { app } = this.props;
-    const { execution, pipelineConfig, sortFilter, stateNotFound, transitioningToAncestor } = this.state;
+    const {
+      execution,
+      pipelineConfig,
+      sortFilter,
+      stateNotFound,
+      ancestry,
+      transitioningToAncestor,
+      eagerExecutionId,
+    } = this.state;
 
     const defaultExecutionParams = { application: app.name, executionId: execution ? execution.id : '' };
     const executionParams = ReactInjector.$state.params.executionParams || defaultExecutionParams;
+
+    let truncateAncestry = ancestry.length - 1;
+    if (eagerExecutionId && eagerExecutionId !== execution.id) {
+      // We are on the eager end of a transition to a different executionId
+      const idx = ancestry.findIndex((a) => a.id === eagerExecutionId);
+      if (idx > -1) {
+        // The incoming executionId is part of the ancestry, so we can eagerly truncate it for a smoother transition
+        truncateAncestry = idx + 1;
+      }
+    }
 
     return (
       <div style={{ width: '100%', paddingTop: 0 }}>
@@ -224,7 +303,25 @@ export class SingleExecutionDetails extends React.Component<
             </div>
           </div>
         )}
-        {execution && <ExecutionLineage app={app} execution={execution} showDurations={sortFilter.showDurations} />}
+        {/* {execution && <ExecutionLineage app={app} execution={execution} showDurations={sortFilter.showDurations} />} */}
+        {execution &&
+          ancestry
+            .filter((_ancestor, i) => i < truncateAncestry)
+            .map((ancestor, i) => (
+              <div className="row" key={ancestor.id}>
+                <div className="col-md-10 col-md-offset-1 executions">
+                  <Execution
+                    key={ancestor.id}
+                    execution={ancestor}
+                    child={i < ancestry.length - 1 ? ancestry[i + 1].id : execution.id}
+                    application={app}
+                    pipelineConfig={null}
+                    standalone={true}
+                    showDurations={sortFilter.showDurations}
+                  />
+                </div>
+              </div>
+            ))}
         {execution && !transitioningToAncestor && (
           <div className="row">
             <div className="col-md-10 col-md-offset-1 executions">
