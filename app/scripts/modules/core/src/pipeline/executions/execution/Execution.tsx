@@ -58,14 +58,10 @@ export interface IExecutionState {
   runningTimeInMs: number;
 }
 
-// eslint-disable-next-line
-const log = (..._args: any[]) => {};
-const findChildIndex = (child: string, execution: IExecution, callsite: string) => {
+const findChildIndex = (child: string, execution: IExecution) => {
   const result = execution.stageSummaries?.findIndex(
     (s) => s.type === 'pipeline' && s.masterStage?.context?.executionId === child,
   );
-
-  log(`[${execution.id}] [${callsite}] Returning index ${result} for child executionId=${child}`, execution);
   return result;
 };
 
@@ -93,7 +89,7 @@ export class Execution extends React.PureComponent<IExecutionProps, IExecutionSt
     };
 
     if ($stateParams.executionId !== props.execution.id) {
-      initialViewState.activeStageId = findChildIndex(props.child, props.execution, ` init `); //props.execution.stageSummaries?.findIndex(s => s.type === 'pipeline' && s.masterStage?.context?.executionId === props.child)
+      initialViewState.activeStageId = findChildIndex(props.child, props.execution);
     }
 
     const restartedStage = execution.stages.find((stage) => stage.context.restartDetails !== undefined);
@@ -118,24 +114,17 @@ export class Execution extends React.PureComponent<IExecutionProps, IExecutionSt
     newViewState.activeStageId = Number(toParams.stage);
     newViewState.activeSubStageId = Number(toParams.subStage);
 
-    log(
-      `[${executionId}] viewState.activeStageId set to ${newViewState.activeStageId} in updateViewStateDetails based on toParams`,
-      toParams,
-    );
     if (toParams.executionId !== this.props.execution.id) {
-      newViewState.activeStageId = findChildIndex(this.props.child, this.props.execution, `update`); //this.props.execution.stageSummaries?.findIndex(s => s.type === 'pipeline' && s.masterStage?.context?.executionId === this.props.child)
+      newViewState.activeStageId = findChildIndex(this.props.child, this.props.execution);
     }
 
     if (this.state.showingDetails !== shouldShowDetails) {
-      log(`[${executionId}] if`, newViewState);
       this.setState({
         showingDetails: this.invalidateShowingDetails(this.props, shouldScroll),
         viewState: newViewState,
       });
     } else {
-      log(`[${executionId}] else`);
       if (this.state.showingDetails && !isEqual(viewState, newViewState)) {
-        log(`[${executionId}] else if`, newViewState);
         this.setState({ viewState: newViewState });
       }
     }
