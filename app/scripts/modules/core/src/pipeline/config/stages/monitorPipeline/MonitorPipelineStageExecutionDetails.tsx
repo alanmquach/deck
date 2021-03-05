@@ -7,8 +7,6 @@ import { StageFailureMessage } from '../../../details';
 
 export function MonitorPipelineStageExecutionDetails(props: IExecutionDetailsSectionProps) {
   const {
-    application,
-    execution,
     stage: { context = {}, outputs = {} },
     stage,
     name,

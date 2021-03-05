@@ -10,7 +10,6 @@ import { StageFailureMessage } from '../../../details';
 export function PipelineStageExecutionDetails(props: IExecutionDetailsSectionProps) {
   const {
     application,
-    execution,
     stage: { context = {} },
     stage,
     name,

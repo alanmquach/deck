@@ -52,6 +52,7 @@ export class SingleExecutionDetails extends React.Component<
 
   constructor(props: ISingleExecutionDetailsProps) {
     super(props);
+
     this.state = {
       execution: null,
       sortFilter: ExecutionState.filterModel.asFilterModel.sortFilter,
@@ -149,13 +150,6 @@ export class SingleExecutionDetails extends React.Component<
       }
       this.setState({ eagerExecutionId });
     }
-    // if (
-    //   execution &&
-    //   execution.id !== $state.params.executionId &&
-    //   this.traverseLineage(execution).includes($state.params.executionId)
-    // ) {
-    //   this.setState({ transitioningToAncestor: true });
-    // }
 
     (execution && execution.id === $state.params.executionId && !execution.isActive
       ? Promise.resolve(execution)
@@ -165,16 +159,12 @@ export class SingleExecutionDetails extends React.Component<
         })
     ).then(
       (execution) => {
-        // ExecutionsTransformer.transformExecution(app, execution);
-
         const transitioning = execution.id !== $state.params.executionId;
 
         this.getAncestry(execution, transitioning).then((ancestry) => {
-          // if (!execution.isActive && ancestry.every(ancestor => !ancestor.isActive)) {
           if ([execution].concat(ancestry).every((generation) => !generation.isActive)) {
             this.cancelPoller();
           }
-          // if (ancestry.some(ancestor => ancestor.isActive)) {
           if ([execution].concat(ancestry).some((ancestor) => ancestor.isActive)) {
             this.schedulePoller();
           }
@@ -183,17 +173,6 @@ export class SingleExecutionDetails extends React.Component<
         if (execution.isActive) {
           this.schedulePoller();
         }
-        // if (!execution.isActive) {
-        //   this.cancelPoller();
-        // }
-        // if (execution.isActive && !this.executionScheduler) {
-        //   this.executionScheduler = SchedulerFactory.createScheduler(5000);
-        //   this.executionLoader = this.executionScheduler.subscribe(() => this.getExecution());
-        // }
-        // if (!execution.isActive && this.executionScheduler) {
-        //   this.executionScheduler.unsubscribe();
-        //   this.executionLoader.unsubscribe();
-        // }
 
         this.setState({ execution, transitioningToAncestor: false });
 
@@ -341,7 +320,6 @@ export class SingleExecutionDetails extends React.Component<
             </div>
           </div>
         )}
-        {/* {execution && <ExecutionLineage app={app} execution={execution} showDurations={sortFilter.showDurations} />} */}
         {execution &&
           ancestry
             .filter((_ancestor, i) => i < truncateAncestry)
