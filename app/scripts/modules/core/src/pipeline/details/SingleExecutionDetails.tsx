@@ -42,9 +42,6 @@ export interface ISingleExecutionRouterStateChange extends IStateChange {
   toParams: ISingleExecutionStateParams;
 }
 
-// eslint-disable-next-line
-const log = console.log;
-
 export class SingleExecutionDetails extends React.Component<
   ISingleExecutionDetailsProps,
   ISingleExecutionDetailsState
@@ -55,7 +52,6 @@ export class SingleExecutionDetails extends React.Component<
 
   constructor(props: ISingleExecutionDetailsProps) {
     super(props);
-    log(`${Date.now()} SingleExecutionDetails constructing`);
     this.state = {
       execution: null,
       sortFilter: ExecutionState.filterModel.asFilterModel.sortFilter,
@@ -84,20 +80,29 @@ export class SingleExecutionDetails extends React.Component<
 
   private getAncestry(execution: IExecution, useAncestryCache = false): Promise<IExecution[]> {
     const lineage = this.traverseLineage(execution);
-    const cache = useAncestryCache
-      ? this.state.ancestry.reduce(
-          (acc, curr) => {
-            acc[curr.id] = curr;
-            return acc;
-          },
-          {
-            // By sticking the current execution into the cache, we get snappy navigation to descendants
-            [execution.id]: execution,
-          },
-        )
-      : {
-          [execution.id]: execution,
-        };
+    const ancestryCache = this.state.ancestry.reduce(
+      (acc, curr) => {
+        acc[curr.id] = curr;
+        return acc;
+      },
+      {
+        // By sticking the current execution into the cache, we get snappy navigation to descendants
+        [execution.id]: execution,
+      },
+    );
+    const inactiveCache = this.state.ancestry.reduce(
+      (acc, curr) => {
+        if (!curr.isActive) {
+          acc[curr.id] = curr;
+        }
+        return acc;
+      },
+      {
+        // By sticking the current execution into the cache, we get snappy navigation to descendants
+        [execution.id]: execution,
+      },
+    );
+    const cache = useAncestryCache ? ancestryCache : inactiveCache;
 
     return Promise.all(
       lineage.map((generation) =>
@@ -109,6 +114,20 @@ export class SingleExecutionDetails extends React.Component<
             }),
       ),
     );
+  }
+
+  private schedulePoller() {
+    if (!this.executionScheduler) {
+      this.executionScheduler = SchedulerFactory.createScheduler(5000);
+      this.executionLoader = this.executionScheduler.subscribe(() => this.getExecution());
+    }
+  }
+
+  private cancelPoller() {
+    if (this.executionScheduler) {
+      this.executionScheduler.unsubscribe();
+      this.executionLoader.unsubscribe();
+    }
   }
 
   private getExecution() {
@@ -138,21 +157,43 @@ export class SingleExecutionDetails extends React.Component<
     //   this.setState({ transitioningToAncestor: true });
     // }
 
-    executionService.getExecution($state.params.executionId).then(
+    (execution && execution.id === $state.params.executionId && !execution.isActive
+      ? Promise.resolve(execution)
+      : executionService.getExecution($state.params.executionId).then((execution) => {
+          ExecutionsTransformer.transformExecution(app, execution);
+          return execution;
+        })
+    ).then(
       (execution) => {
-        ExecutionsTransformer.transformExecution(app, execution);
+        // ExecutionsTransformer.transformExecution(app, execution);
 
-        this.getAncestry(execution, true).then((ancestry) => {
+        const transitioning = execution.id !== $state.params.executionId;
+
+        this.getAncestry(execution, transitioning).then((ancestry) => {
+          // if (!execution.isActive && ancestry.every(ancestor => !ancestor.isActive)) {
+          if ([execution].concat(ancestry).every((generation) => !generation.isActive)) {
+            this.cancelPoller();
+          }
+          // if (ancestry.some(ancestor => ancestor.isActive)) {
+          if ([execution].concat(ancestry).some((ancestor) => ancestor.isActive)) {
+            this.schedulePoller();
+          }
           this.setState({ ancestry });
         });
-        if (execution.isActive && !this.executionScheduler) {
-          this.executionScheduler = SchedulerFactory.createScheduler(5000);
-          this.executionLoader = this.executionScheduler.subscribe(() => this.getExecution());
+        if (execution.isActive) {
+          this.schedulePoller();
         }
-        if (!execution.isActive && this.executionScheduler) {
-          this.executionScheduler.unsubscribe();
-          this.executionLoader.unsubscribe();
-        }
+        // if (!execution.isActive) {
+        //   this.cancelPoller();
+        // }
+        // if (execution.isActive && !this.executionScheduler) {
+        //   this.executionScheduler = SchedulerFactory.createScheduler(5000);
+        //   this.executionLoader = this.executionScheduler.subscribe(() => this.getExecution());
+        // }
+        // if (!execution.isActive && this.executionScheduler) {
+        //   this.executionScheduler.unsubscribe();
+        //   this.executionLoader.unsubscribe();
+        // }
 
         this.setState({ execution, transitioningToAncestor: false });
 
@@ -169,7 +210,6 @@ export class SingleExecutionDetails extends React.Component<
   }
 
   public componentDidMount(): void {
-    log(`${Date.now()} SingleExecutionDetails componentDidMount`);
     this.stateChangeSuccessSubscription = ReactInjector.stateEvents.stateChangeSuccess.subscribe(
       (stateChange: ISingleExecutionRouterStateChange) => {
         if (
@@ -186,7 +226,6 @@ export class SingleExecutionDetails extends React.Component<
   }
 
   public componentWillUnmount(): void {
-    log(`${Date.now()} SingleExecutionDetails componentWillUnmount`);
     if (this.executionScheduler) {
       this.executionScheduler.unsubscribe();
     }
@@ -231,7 +270,6 @@ export class SingleExecutionDetails extends React.Component<
   };
 
   public render() {
-    log(`${Date.now()} SingleExecutionDetails render()`);
     const { app } = this.props;
     const {
       execution,
