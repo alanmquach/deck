@@ -42,6 +42,11 @@ export interface ISingleExecutionRouterStateChange extends IStateChange {
   toParams: ISingleExecutionStateParams;
 }
 
+// export interface IExecutionAncestry[] {
+//   lineage: IExecution[];
+//   associatedExecutionId:
+// }
+
 function traverseLineage(execution: IExecution): string[] {
   const lineage: string[] = [];
   if (!execution) {
@@ -61,9 +66,10 @@ function traverseLineage(execution: IExecution): string[] {
 
 export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
   const ancestryRef = React.useRef([] as IExecution[]);
-  const scheduler = SchedulerFactory.createScheduler(15000);
+  const scheduler = SchedulerFactory.createScheduler(5000);
   const { executionService, $state } = ReactInjector;
   const { app } = props;
+  const [transitioning, setTransitioning] = React.useState(false);
   const [transitioningToAncestor, setTransitioningToAncestor] = React.useState(false);
   const [sortFilter, setSortFilter] = React.useState(ExecutionState.filterModel.asFilterModel.sortFilter);
 
@@ -72,7 +78,9 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
   // eslint-disable-next-line
   const log = console.log;
 
-  const getAncestry = (execution: IExecution, useAncestryCache = false): Promise<IExecution[]> => {
+  const getAncestry = (execution: IExecution): Promise<IExecution[]> => {
+    const youngest = ancestryRef.current[ancestryRef.current.length - 1];
+    const useAncestryCache = execution && youngest && youngest.id !== execution.id;
     log(`getAncestry(): using ancestry cache? ${useAncestryCache}`);
     const lineage = traverseLineage(execution);
     log(`getAncestry(): lineage(${execution?.id}) = [${lineage.join(',')}]`);
@@ -134,7 +142,7 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
     () => {
       const shouldUseCache = execution && execution.id !== executionId;
       log(`getting ancestry... shouldUseCache?${shouldUseCache} --- ${execution.id} ?= ${executionId}`);
-      return getAncestry(execution, execution && execution.id !== executionId).then((ancestry) => {
+      return getAncestry(execution).then((ancestry) => {
         log(`getAncestry done`);
         return ancestry;
       });
