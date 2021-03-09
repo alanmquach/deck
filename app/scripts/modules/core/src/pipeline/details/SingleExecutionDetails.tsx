@@ -155,32 +155,34 @@ export class SingleExecutionDetails extends React.Component<
     // when the main execution is not active, we can immediately resolve instead of refetching.
     (execution && execution.id === $state.params.executionId && !execution.isActive
       ? Promise.resolve(execution)
-      : executionService.getExecution($state.params.executionId).then((execution) => {
-          ExecutionsTransformer.transformExecution(app, execution);
-          return execution;
+      : executionService.getExecution($state.params.executionId).then((fetchedExecution) => {
+          ExecutionsTransformer.transformExecution(app, fetchedExecution);
+          return fetchedExecution;
         })
     ).then(
-      (execution) => {
+      (fetchedExecution) => {
         const transitioning = execution.id !== $state.params.executionId;
 
-        this.getAncestry(execution, transitioning).then((ancestry) => {
-          if ([execution].concat(ancestry).every((generation) => !generation.isActive)) {
+        this.getAncestry(fetchedExecution, transitioning).then((ancestry) => {
+          if ([fetchedExecution].concat(ancestry).every((generation) => !generation.isActive)) {
             this.cancelPoller();
           }
-          if ([execution].concat(ancestry).some((ancestor) => ancestor.isActive)) {
+          if ([fetchedExecution].concat(ancestry).some((ancestor) => ancestor.isActive)) {
             this.schedulePoller();
           }
           this.setState({ ancestry });
         });
-        if (execution.isActive) {
+        if (fetchedExecution.isActive) {
           this.schedulePoller();
         }
 
-        this.setState({ execution, transitioningToAncestor: false });
+        this.setState({ execution: fetchedExecution, transitioningToAncestor: false });
 
         app.pipelineConfigs.activate();
         app.pipelineConfigs.ready().then(() => {
-          const pipelineConfig = app.pipelineConfigs.data.find((p: IPipeline) => p.id === execution.pipelineConfigId);
+          const pipelineConfig = app.pipelineConfigs.data.find(
+            (p: IPipeline) => p.id === fetchedExecution.pipelineConfigId,
+          );
           this.setState({ pipelineConfig });
         });
       },
