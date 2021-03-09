@@ -61,12 +61,10 @@ function traverseLineage(execution: IExecution): string[] {
 
 export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
   const ancestryRef = React.useRef([] as IExecution[]);
-  const scheduler = SchedulerFactory.createScheduler(5000);
+  const scheduler = SchedulerFactory.createScheduler(15000);
   const { executionService, $state } = ReactInjector;
   const { app } = props;
-  // const [execution, setExecution] = React.useState<IExecution>();
-  // const [ancestry, setAncestry] = React.useState<IExecution[]>([]);
-  const [stateNotFound, setStateNotFound] = React.useState(false);
+  const [transitioningToAncestor, setTransitioningToAncestor] = React.useState(false);
   const [sortFilter, setSortFilter] = React.useState(ExecutionState.filterModel.asFilterModel.sortFilter);
 
   const [executionId, setExecutionId] = React.useState($state.params.executionId);
@@ -75,8 +73,9 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
   const log = console.log;
 
   const getAncestry = (execution: IExecution, useAncestryCache = false): Promise<IExecution[]> => {
-    // const { ancestry } = this.state;
+    log(`getAncestry(): using ancestry cache? ${useAncestryCache}`);
     const lineage = traverseLineage(execution);
+    log(`getAncestry(): lineage(${execution?.id}) = [${lineage.join(',')}]`);
 
     // ancestryCache is used when navigating between executions
     const ancestryCache = ancestryRef.current.reduce((acc, curr) => set(acc, curr.id, curr), {
@@ -90,45 +89,51 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
 
     const cache = useAncestryCache ? ancestryCache : inactiveCache;
 
+    log(
+      `getAncestry(): [${useAncestryCache ? 'x' : ' '}] ancestryRef=[${ancestryRef.current
+        .map((a) => a.id)
+        .join(',')}]`,
+    );
+    log(
+      `getAncestry(): [${useAncestryCache ? ' ' : 'x'}] inactiveRef=[${ancestryRef.current
+        .filter((a) => !a.isActive)
+        .map((a) => a.id)
+        .join(',')}]`,
+    );
+    log(`getAncestry(): fetches should go out for lineage - (one of the above) - execution.id (${execution?.id})`);
     return Promise.all(
       lineage.map((generation) =>
         cache[generation]
           ? Promise.resolve(cache[generation])
           : ReactInjector.executionService.getExecution(generation).then((ancestor) => {
+              log(`getAncestry(): getExecution(${generation}) returned`);
               ExecutionsTransformer.transformExecution(app, ancestor);
               return ancestor;
             }),
       ),
     ).then((ancestry) => {
+      log(`getAncestry(): setting new ancestryRef=[${ancestry.map((a) => a.id).join(',')}]`);
       ancestryRef.current = ancestry;
       return ancestry;
     });
   };
 
-  const { result: execution, refresh: refreshExecution } = useLatestPromise(
-    () =>
-      executionService.getExecution(executionId).then((fetchedExecution) => {
-        log(`useLatestPromise run, ${executionId}`);
-        ExecutionsTransformer.transformExecution(app, fetchedExecution);
-        return fetchedExecution;
-      }),
-    [executionId],
-  );
+  const { result: execution, status, refresh: refreshExecution } = useLatestPromise(() => {
+    log(`useLatesPromise(): about to getExecution(${executionId})`);
+    return executionService.getExecution(executionId).then((fetchedExecution) => {
+      setTransitioningToAncestor(false);
+      log(`useLatestPromise(getExecution) run, ${executionId}, about to resolve, setting tta=false`);
+      ExecutionsTransformer.transformExecution(app, fetchedExecution);
+      return fetchedExecution;
+    });
+  }, [executionId]);
 
-  // React.useEffect(() => {
-  //   executionService.getExecution($state.params.executionId).then((fetchedExecution) => {
-  //     ExecutionsTransformer.transformExecution(app, fetchedExecution);
-  //     log("about to set execution from effect of initial render")
-  //     setExecution(fetchedExecution);
-  //   },
-  //   () => {
-  //     setStateNotFound(true);
-  //   })
-  // }, [])
+  const stateNotFound = status === 'REJECTED';
 
   const { result: ancestry } = useData(
     () => {
-      log(`getting ancestry: ${execution.id} ?= ${executionId}`);
+      const shouldUseCache = execution && execution.id !== executionId;
+      log(`getting ancestry... shouldUseCache?${shouldUseCache} --- ${execution.id} ?= ${executionId}`);
       return getAncestry(execution, execution && execution.id !== executionId).then((ancestry) => {
         log(`getAncestry done`);
         return ancestry;
@@ -139,25 +144,13 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
   );
 
   React.useEffect(() => {
-    log(`subscription effect run, ${execution?.id} ${execution?.isActive}`);
-    const subscription =
-      execution?.isActive &&
-      scheduler.subscribe(() => {
-        refreshExecution();
-        // executionService.getExecution(executionId).then((fetchedExecution) => {
-        //   ExecutionsTransformer.transformExecution(app, fetchedExecution);
-        //   log("about to set execution from subscription")
-        //   setExecution(fetchedExecution);
-        // },
-        // () => {
-        //   setStateNotFound(true);
-        // })
-      });
+    log(`SchedulerFactory effect run, (${execution?.id}).isActive=${execution?.isActive}`);
+    const subscription = execution?.isActive && scheduler.subscribe(() => refreshExecution());
+
     return () => {
-      log(`cleaned up`);
       subscription && subscription.unsubscribe();
     };
-  }, [execution?.id]);
+  }, [execution?.id, execution?.isActive]);
 
   React.useEffect(() => {
     const subscription = ReactInjector.stateEvents.stateChangeSuccess.subscribe(
@@ -169,19 +162,22 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
             stateChange.toParams.executionId !== stateChange.fromParams.executionId)
         ) {
           setExecutionId(stateChange.toParams.executionId);
-          // executionService.getExecution(stateChange.toParams.executionId).then((fetchedExecution) => {
-          //   ExecutionsTransformer.transformExecution(app, fetchedExecution);
-          //   log("about to set execution from effect of state change")
-          //   setExecution(fetchedExecution);
-          // },
-          // () => {
-          //   setStateNotFound(true);
-          // })
+          const lineage = traverseLineage(execution);
+          log(
+            `stateChangeSubscription: transitioning to ${stateChange.toParams.executionId} <- ${stateChange.fromParams.executionId}`,
+          );
+          log(`stateChangeSubscription: lineage for ${execution?.id}=[${lineage.join(',')}]`);
+          if (lineage.includes(stateChange.toParams.executionId)) {
+            log(`stateChangeSubscription: lineage includes ${stateChange.toParams.executionId} setting tta=true`);
+            setTransitioningToAncestor(true);
+          }
         }
       },
     );
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [execution]);
 
   const { result: pipelineConfigs } = useLatestPromise<IPipeline[]>(() => {
     app.pipelineConfigs.activate();
@@ -190,16 +186,13 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
   const pipelineConfig =
     pipelineConfigs && execution && pipelineConfigs.find((p: IPipeline) => p.id === execution.pipelineConfigId);
 
-  const incomingExecutionId = ''; //TODO: fixme
-  const transitioningToAncestor = false; //TODO: fixme
-
   const defaultExecutionParams = { application: app.name, executionId: execution?.id || '' };
   const executionParams = ReactInjector.$state.params.executionParams || defaultExecutionParams;
 
   let truncateAncestry = ancestry.length - 1;
-  if (incomingExecutionId && incomingExecutionId !== execution.id) {
+  if (executionId && execution && executionId !== execution.id) {
     // We are on the eager end of a transition to a different executionId
-    const idx = ancestry.findIndex((a) => a.id === incomingExecutionId);
+    const idx = ancestry.findIndex((a) => a.id === executionId);
     if (idx > -1) {
       // If the incoming executionId is part of the ancestry, we can eagerly truncate the ancestry at that generation
       // for a smoother experience during the transition. That is, if we are navigating from e to b in [a, b, c, d, e],
@@ -207,10 +200,13 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
       // We eagerly truncate the ancestry to [a, b] since that will be the end state anyways (transitioningToAncestor hides [e])
       // Once [b] loads, the ancestry is recomputed to just [a] and the rendered executions remain [a, b]
       truncateAncestry = idx + 1;
+      log(`render() truncateAncestry eagerly due to navigating to ancestor`);
     }
   }
 
-  log(`ancestry=[${ancestry.map((a) => a.id).join(',')}]`);
+  log(`render() truncateAncestry(${truncateAncestry}) ancestry=[${ancestry.map((a) => a.id).join(',')}]`);
+  log(`render() executionId=(${executionId})`);
+  log(`render() execution.id=(${execution?.id})`);
 
   return (
     <div style={{ width: '100%', paddingTop: 0 }}>
@@ -286,9 +282,9 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
               </div>
             </div>
           ))}
-      <div className="row">
+      {/* <div className="row">
         <div className="col-md-10 col-md-offset-1 executions">---</div>
-      </div>
+      </div> */}
       {execution && !transitioningToAncestor && (
         <div className="row">
           <div className="col-md-10 col-md-offset-1 executions">
