@@ -12,7 +12,7 @@ import { Application } from 'core/application/application.model';
 import { CancelModal } from 'core/cancelModal/CancelModal';
 import { SETTINGS } from 'core/config/settings';
 import { ConfirmationModalService } from 'core/confirmationModal';
-import { IExecution, IPipeline, IRestartDetails } from 'core/domain';
+import { IExecution, IExecutionStageSummary, IPipeline, IRestartDetails } from 'core/domain';
 import { ISortFilter } from 'core/filterModel';
 import { Tooltip } from 'core/presentation/Tooltip';
 import { ReactInjector } from 'core/reactShims';
@@ -35,7 +35,7 @@ import './execution.less';
 export interface IExecutionProps {
   application: Application;
   execution: IExecution;
-  child?: string;
+  descendantExecutionId?: string;
   pipelineConfig: IPipeline;
   showDurations?: boolean;
   standalone?: boolean;
@@ -88,8 +88,9 @@ export class Execution extends React.PureComponent<IExecutionProps, IExecutionSt
       canConfigure: false,
     };
 
-    if ($stateParams.executionId !== props.execution.id) {
-      initialViewState.activeStageId = findChildIndex(props.child, props.execution);
+    // Used when rendering ancestors in SingleExecutionView to mark descendents as "selected"
+    if ($stateParams.executionId !== props.execution.id && props.descendantExecutionId) {
+      initialViewState.activeStageId = findChildIndex(props.descendantExecutionId, props.execution);
     }
 
     const restartedStage = execution.stages.find((stage) => stage.context.restartDetails !== undefined);
@@ -106,16 +107,18 @@ export class Execution extends React.PureComponent<IExecutionProps, IExecutionSt
   }
 
   private updateViewStateDetails(toParams: any, fromParams: any): void {
-    const executionId = this.props.execution.id;
+    const { descendantExecutionId, execution } = this.props;
+    // const executionId = this.props.execution.id;
     const { viewState } = this.state;
-    const shouldShowDetails = toParams.executionId === executionId;
-    const shouldScroll = toParams.executionId === executionId && fromParams.executionId !== executionId;
+    const shouldShowDetails = toParams.executionId === execution.id;
+    const shouldScroll = toParams.executionId === execution.id && fromParams.executionId !== execution.id;
     const newViewState = { ...viewState };
     newViewState.activeStageId = Number(toParams.stage);
     newViewState.activeSubStageId = Number(toParams.subStage);
 
-    if (toParams.executionId !== this.props.execution.id) {
-      newViewState.activeStageId = findChildIndex(this.props.child, this.props.execution);
+    // Used when rendering ancestors in SingleExecutionView to mark descendents as "selected"
+    if (toParams.executionId !== execution.id && descendantExecutionId) {
+      newViewState.activeStageId = findChildIndex(descendantExecutionId, execution);
     }
 
     if (this.state.showingDetails !== shouldShowDetails) {
@@ -147,8 +150,20 @@ export class Execution extends React.PureComponent<IExecutionProps, IExecutionSt
     return showing;
   }
 
-  public isActive(stageIndex: number): boolean {
-    return this.state.showingDetails && Number(ReactInjector.$stateParams.stage) === stageIndex;
+  public isActive(stage: IExecutionStageSummary): boolean {
+    if (!stage) {
+      return false;
+    }
+
+    if (this.props.execution.id === ReactInjector.$stateParams.executionId) {
+      return this.state.showingDetails && Number(ReactInjector.$stateParams.stage) === stage.index;
+    }
+    return (
+      this.props.descendantExecutionId &&
+      stage &&
+      stage.type === 'pipeline' &&
+      stage.masterStage?.context?.executionId === this.props.descendantExecutionId
+    );
   }
 
   public toggleDetails = (stageIndex?: number, subIndex?: number): void => {
@@ -329,21 +344,8 @@ export class Execution extends React.PureComponent<IExecutionProps, IExecutionSt
         execution={execution}
         stage={stage}
         onClick={this.toggleDetails}
-        active={
-          this.props.execution.id === $stateParams.executionId
-            ? this.isActive(stage.index)
-            : this.props.child &&
-              stage.type === 'pipeline' &&
-              stage.masterStage?.context?.executionId === this.props.child
-        }
-        previousStageActive={
-          this.props.execution.id === $stateParams.executionId
-            ? this.isActive(stage.index - 1)
-            : this.props.child &&
-              index > 0 &&
-              allStages[index - 1].type === 'pipeline' &&
-              allStages[index - 1].masterStage?.context?.executionId === this.props.child
-        }
+        active={this.isActive(stage)}
+        previousStageActive={this.isActive(index > 0 ? allStages[index - 1] : null)}
         width={executionMarkerWidth}
       />
     ));
