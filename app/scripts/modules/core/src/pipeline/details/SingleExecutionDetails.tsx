@@ -1,4 +1,5 @@
 import { UISref } from '@uirouter/react';
+import { set } from 'lodash';
 import React from 'react';
 import ReactGA from 'react-ga';
 import { Subscription } from 'rxjs';
@@ -68,8 +69,8 @@ export class SingleExecutionDetails extends React.Component<
     }
     let current = execution;
     // Including the deepest child (topmost, aka current, execution) in the lineage lets us
-    // also cache it inside ancestry through the below effect.
-    // This buys us snappier navigation to descendants because the entire lineage is already local
+    // also cache it as part of the ancestry state (we just don't render it).
+    // This buys us snappier navigation to descendants because the entire lineage will be local.
     lineage.unshift(current.id);
     while (current.trigger?.parentExecution) {
       current = current.trigger.parentExecution;
@@ -79,29 +80,34 @@ export class SingleExecutionDetails extends React.Component<
   }
 
   private getAncestry(execution: IExecution, useAncestryCache = false): Promise<IExecution[]> {
+    const { ancestry } = this.state;
     const lineage = this.traverseLineage(execution);
-    const ancestryCache = this.state.ancestry.reduce(
-      (acc, curr) => {
-        acc[curr.id] = curr;
-        return acc;
-      },
-      {
-        // By sticking the current execution into the cache, we get snappy navigation to descendants
-        [execution.id]: execution,
-      },
-    );
-    const inactiveCache = this.state.ancestry.reduce(
-      (acc, curr) => {
-        if (!curr.isActive) {
-          acc[curr.id] = curr;
-        }
-        return acc;
-      },
-      {
-        // By sticking the current execution into the cache, we get snappy navigation to descendants
-        [execution.id]: execution,
-      },
-    );
+
+    // ancestryCache is used when navigating
+    const ancestryCache = ancestry.reduce((acc, curr) => set(acc, curr.id, curr), { [execution.id]: execution });
+    //   (acc, curr) => {
+    //     acc[curr.id] = curr;
+    //     return acc;
+    //   },
+    //   {
+    //     // By sticking the current execution into the cache, we get snappy navigation to descendants
+    //     [execution.id]: execution,
+    //   },
+    // );
+    const inactiveCache = ancestry
+      .filter((ancestor) => !ancestor.isActive)
+      .reduce((acc, curr) => set(acc, curr.id, curr), { [execution.id]: execution });
+    //   (acc, curr) => {
+    //     // if (!curr.isActive) {
+    //       acc[curr.id] = curr;
+    //     // }
+    //     return acc;
+    //   },
+    //   {
+    //     // By sticking the current execution into the cache, we get snappy navigation to descendants
+    //     [execution.id]: execution,
+    //   },
+    // );
     const cache = useAncestryCache ? ancestryCache : inactiveCache;
 
     return Promise.all(
