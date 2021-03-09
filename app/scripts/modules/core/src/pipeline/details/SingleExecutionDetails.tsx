@@ -16,7 +16,6 @@ import { ManualExecutionModal } from '../manualExecution';
 import { ExecutionsTransformer } from '../service/ExecutionsTransformer';
 
 import './singleExecutionDetails.less';
-// import { ExecutionLineage, traverseLineage } from './ExecutionLineage';
 
 export interface ISingleExecutionDetailsProps {
   app: Application;
@@ -29,7 +28,7 @@ export interface ISingleExecutionDetailsState {
   stateNotFound: boolean;
   ancestry: IExecution[];
   transitioningToAncestor: boolean;
-  eagerExecutionId: string;
+  incomingExecutionId: string;
 }
 
 export interface ISingleExecutionStateParams {
@@ -59,7 +58,7 @@ export class SingleExecutionDetails extends React.Component<
       stateNotFound: false,
       ancestry: [],
       transitioningToAncestor: false,
-      eagerExecutionId: '',
+      incomingExecutionId: '',
     };
   }
   private traverseLineage(execution: IExecution): string[] {
@@ -136,21 +135,24 @@ export class SingleExecutionDetails extends React.Component<
     const { app } = this.props;
     const { execution } = this.state;
 
-    const eagerExecutionId = $state.params.executionId;
+    const incomingExecutionId = $state.params.executionId;
 
     if (!app || app.notFound || app.hasError) {
       return;
     }
 
-    if (execution && execution.id !== eagerExecutionId) {
-      // This is kinda clunky but it provides a cleaner experience when navigating around the lineage
-      // When navigating to an ancestor
-      if (this.traverseLineage(execution).includes(eagerExecutionId)) {
+    if (execution && execution.id !== incomingExecutionId) {
+      // A little clunky, but provides a smoother experience when navigating up the lineage
+      // This flag is used to eagerly hide then main execution when navigating to an ancestor
+      if (this.traverseLineage(execution).includes(incomingExecutionId)) {
         this.setState({ transitioningToAncestor: true });
       }
-      this.setState({ eagerExecutionId });
+      // Propagate the incoming executionId to state. We will check against this in the render() method
+      this.setState({ incomingExecutionId });
     }
 
+    // Since the poller is not cancelled until all ancestors are no longer active
+    // when the main execution is not active, we can immediately resolve instead of refetching.
     (execution && execution.id === $state.params.executionId && !execution.isActive
       ? Promise.resolve(execution)
       : executionService.getExecution($state.params.executionId).then((execution) => {
@@ -257,18 +259,22 @@ export class SingleExecutionDetails extends React.Component<
       stateNotFound,
       ancestry,
       transitioningToAncestor,
-      eagerExecutionId,
+      incomingExecutionId,
     } = this.state;
 
     const defaultExecutionParams = { application: app.name, executionId: execution ? execution.id : '' };
     const executionParams = ReactInjector.$state.params.executionParams || defaultExecutionParams;
 
     let truncateAncestry = ancestry.length - 1;
-    if (eagerExecutionId && eagerExecutionId !== execution.id) {
+    if (incomingExecutionId && incomingExecutionId !== execution.id) {
       // We are on the eager end of a transition to a different executionId
-      const idx = ancestry.findIndex((a) => a.id === eagerExecutionId);
+      const idx = ancestry.findIndex((a) => a.id === incomingExecutionId);
       if (idx > -1) {
-        // The incoming executionId is part of the ancestry, so we can eagerly truncate it for a smoother transition
+        // If the incoming executionId is part of the ancestry, we can eagerly truncate the ancestry at that generation
+        // for a smoother experience during the transition. That is, if we are navigating from e to b in [a, b, c, d, e],
+        // [a, b, c, d] is rendered as part of the ancestry, while [e] is the main execution.
+        // We eagerly truncate the ancestry to [a, b] since that will be the end state anyways (transitioningToAncestor hides [e])
+        // Once [b] loads, the ancestry is recomputed to just [a] and the rendered executions remain [a, b]
         truncateAncestry = idx + 1;
       }
     }
@@ -329,7 +335,7 @@ export class SingleExecutionDetails extends React.Component<
                   <Execution
                     key={ancestor.id}
                     execution={ancestor}
-                    child={i < ancestry.length - 1 ? ancestry[i + 1].id : execution.id}
+                    descendantExecutionId={i < ancestry.length - 1 ? ancestry[i + 1].id : execution.id}
                     application={app}
                     pipelineConfig={null}
                     standalone={true}
