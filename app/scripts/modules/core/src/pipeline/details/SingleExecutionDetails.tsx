@@ -69,8 +69,8 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
   const scheduler = SchedulerFactory.createScheduler(5000);
   const { executionService, $state } = ReactInjector;
   const { app } = props;
-  const [transitioning, setTransitioning] = React.useState(false);
-  const [transitioningToAncestor, setTransitioningToAncestor] = React.useState(false);
+  // const [transitioning, setTransitioning] = React.useState(false);
+  const [transitioningToAncestor, setTransitioningToAncestor] = React.useState('');
   const [sortFilter, setSortFilter] = React.useState(ExecutionState.filterModel.asFilterModel.sortFilter);
 
   const [executionId, setExecutionId] = React.useState($state.params.executionId);
@@ -127,10 +127,22 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
   };
 
   const { result: execution, status, refresh: refreshExecution } = useLatestPromise(() => {
-    log(`useLatesPromise(): about to getExecution(${executionId})`);
+    const trace = Date.now();
+    log(`${new Date().toString()} ${trace} useLatestPromise(): about to getExecution(${executionId})`);
     return executionService.getExecution(executionId).then((fetchedExecution) => {
-      setTransitioningToAncestor(false);
-      log(`useLatestPromise(getExecution) run, ${executionId}, about to resolve, setting tta=false`);
+      log(
+        `${new Date().toString()} ${trace} useLatestPromise(getExecution) run, ${executionId}:${
+          fetchedExecution.id
+        }, about to resolve, tta=${transitioningToAncestor}`,
+      );
+      if (fetchedExecution.id === transitioningToAncestor) {
+        log(
+          `${new Date().toString()} ${trace} useLatestPromise(getExecution) execution (${
+            fetchedExecution.id
+          }) matched, would've blanked out tta`,
+        );
+        // setTransitioningToAncestor('');
+      }
       ExecutionsTransformer.transformExecution(app, fetchedExecution);
       return fetchedExecution;
     });
@@ -153,6 +165,7 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
 
   React.useEffect(() => {
     log(`SchedulerFactory effect run, (${execution?.id}).isActive=${execution?.isActive}`);
+    //TODO: need to make sure scheduler/subscription looks at both execution and ancestry
     const subscription = execution?.isActive && scheduler.subscribe(() => refreshExecution());
 
     return () => {
@@ -177,7 +190,7 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
           log(`stateChangeSubscription: lineage for ${execution?.id}=[${lineage.join(',')}]`);
           if (lineage.includes(stateChange.toParams.executionId)) {
             log(`stateChangeSubscription: lineage includes ${stateChange.toParams.executionId} setting tta=true`);
-            setTransitioningToAncestor(true);
+            setTransitioningToAncestor(stateChange.toParams.executionId);
           }
         }
       },
@@ -186,6 +199,18 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
       subscription.unsubscribe();
     };
   }, [execution]);
+
+  React.useEffect(() => {
+    log(
+      `one of these changed: (not) useLatestPromise transitioningToAncestor=${transitioningToAncestor} execution.id=${execution?.id}, running effect`,
+    );
+    if (transitioningToAncestor === execution?.id) {
+      log(
+        `one of these changed: (not) useLatestPromise they match, so finally blanking out tta, hopefully post render cycle`,
+      );
+      setTransitioningToAncestor('');
+    }
+  }, [transitioningToAncestor, execution?.id]);
 
   const { result: pipelineConfigs } = useLatestPromise<IPipeline[]>(() => {
     app.pipelineConfigs.activate();
@@ -214,7 +239,12 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
 
   log(`render() truncateAncestry(${truncateAncestry}) ancestry=[${ancestry.map((a) => a.id).join(',')}]`);
   log(`render() executionId=(${executionId})`);
-  log(`render() execution.id=(${execution?.id})`);
+  log(`render() (not) useLatestPromise execution.id=(${execution?.id}) tta=(${transitioningToAncestor})`);
+  log(
+    `render() (not) useLatestPromise can i has render? ${
+      !transitioningToAncestor || transitioningToAncestor === execution.id
+    }`,
+  );
 
   return (
     <div style={{ width: '100%', paddingTop: 0 }}>
@@ -293,7 +323,7 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
       {/* <div className="row">
         <div className="col-md-10 col-md-offset-1 executions">---</div>
       </div> */}
-      {execution && !transitioningToAncestor && (
+      {execution && (!transitioningToAncestor || transitioningToAncestor === execution.id) && (
         <div className="row">
           <div className="col-md-10 col-md-offset-1 executions">
             <Execution
