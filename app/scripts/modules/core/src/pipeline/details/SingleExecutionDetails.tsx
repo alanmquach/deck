@@ -161,7 +161,7 @@ export class SingleExecutionDetails extends React.Component<
         })
     ).then(
       (fetchedExecution) => {
-        const transitioning = execution.id !== $state.params.executionId;
+        const transitioning = execution && execution.id !== $state.params.executionId;
 
         this.getAncestry(fetchedExecution, transitioning).then((ancestry) => {
           if ([fetchedExecution].concat(ancestry).every((generation) => !generation.isActive)) {
