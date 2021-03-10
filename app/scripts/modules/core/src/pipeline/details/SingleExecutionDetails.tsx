@@ -126,7 +126,7 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
 
   const { result: execution, status, refresh: refreshExecution } = useLatestPromise(() => {
     const trace = Date.now();
-    log(`${new Date().toString()} ${trace} useLatestPromise(): about to getExecution(${executionId})`);
+    log(`${new Date().toString()} ${trace} useLatestPromise(asdf): about to getExecution(${executionId})`);
     return executionService.getExecution(executionId).then((fetchedExecution) => {
       log(
         `${new Date().toString()} ${trace} useLatestPromise(getExecution) run, ${executionId}:${
@@ -162,21 +162,30 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
   );
 
   const everything = [execution].concat(ancestry);
-  log(`everything=${everything.map((x) => x?.id).join(',')}`);
+  log(`SchedulerFactory everything=${everything.map((x) => x?.id).join(',')}`);
+  log(`SchedulerFactory active=${everything.map((x) => x?.isActive)}`);
   const someActive = [execution]
     .concat(ancestry)
     .filter((x) => x)
     .some((x) => x.isActive);
+  log(`SchedulerFactory someActive=${someActive}`);
 
   React.useEffect(() => {
-    log(`SchedulerFactory effect run, (${execution?.id}).isActive=${execution?.isActive}`);
+    const tracer = Date.now();
+    log(`SchedulerFactory ${tracer} effect run, someActive=${someActive}`); // if this didn't change then it would be becvause we got a new execution and thusly a new refresher
     //TODO: need to make sure scheduler/subscription looks at both execution and ancestry
-    const subscription = execution?.isActive && scheduler.subscribe(() => refreshExecution());
+    const subscription =
+      someActive &&
+      scheduler.subscribe(() => {
+        log(`SchedulerFactory asdf: refreshing on schedule, look for next useLatestPromise?`);
+        refreshExecution();
+      });
 
     return () => {
+      log(`SchedulerFactory ${tracer} cleaning up`); // if this didn't change then it would be becvause we got a new execution and thusly a new refresher
       subscription && subscription.unsubscribe();
     };
-  }, [execution?.id, execution?.isActive]);
+  }, [someActive]);
 
   React.useEffect(() => {
     const subscription = ReactInjector.stateEvents.stateChangeSuccess.subscribe(
@@ -190,7 +199,7 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
           setExecutionId(stateChange.toParams.executionId);
           const lineage = traverseLineage(execution);
           log(
-            `stateChangeSubscription: transitioning to ${stateChange.toParams.executionId} <- ${stateChange.fromParams.executionId}`,
+            `stateChangeSubscription: asdf transitioning to ${stateChange.toParams.executionId} <- ${stateChange.fromParams.executionId}`,
           );
           log(`stateChangeSubscription: lineage for ${execution?.id}=[${lineage.join(',')}]`);
           if (lineage.includes(stateChange.toParams.executionId)) {
@@ -247,7 +256,7 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
   }
 
   log(`render() truncateAncestry(${truncateAncestry}) ancestry=[${ancestry.map((a) => a.id).join(',')}]`);
-  log(`render() executionId=(${executionId})`);
+  log(`render() asdf executionId=(${executionId})`);
   log(`render() (not) useLatestPromise execution.id=(${execution?.id}) tta=(${transitioningToAncestor})`);
   log(
     `render() (not) useLatestPromise can i has render? ${
