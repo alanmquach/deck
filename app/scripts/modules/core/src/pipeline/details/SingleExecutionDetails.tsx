@@ -1,10 +1,11 @@
 import { UISref } from '@uirouter/react';
+import { set } from 'lodash';
 import React, { useEffect, useState } from 'react';
 import ReactGA from 'react-ga';
 
 import { Application } from 'core/application/application.model';
 import { IExecution, IPipeline } from 'core/domain';
-import { Tooltip, useLatestPromise } from 'core/presentation';
+import { Tooltip, useData, useLatestPromise } from 'core/presentation';
 import { IStateChange, ReactInjector } from 'core/reactShims';
 import { SchedulerFactory } from 'core/scheduler';
 import { ExecutionState } from 'core/state';
@@ -36,7 +37,26 @@ export function getAndTransformExecution(id: string, app: Application) {
   });
 }
 
+//TODO: Limit the lineage to some reasonable number of max generations
+function traverseLineage(execution: IExecution): string[] {
+  const lineage: string[] = [];
+  if (!execution) {
+    return lineage;
+  }
+  let current = execution;
+  // Including the deepest child (topmost, aka current, execution) in the lineage lets us
+  // also cache it as part of the ancestry state (we just don't render it).
+  // This buys us snappier navigation to descendants because the entire lineage will be local.
+  lineage.unshift(current.id);
+  while (current.trigger?.parentExecution) {
+    current = current.trigger.parentExecution;
+    lineage.unshift(current.id);
+  }
+  return lineage;
+}
+
 export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
+  const ancestryRef = React.useRef([] as IExecution[]);
   const scheduler = SchedulerFactory.createScheduler(5000);
   const { $state, stateEvents } = ReactInjector;
   const { sortFilter } = ExecutionState.filterModel.asFilterModel;
@@ -44,6 +64,35 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
 
   const [showDurations, setShowDurations] = useState(sortFilter.showDurations);
   const [executionId, setExecutionId] = useState($state.params.executionId);
+  const [transitioningToAncestor, setTransitioningToAncestor] = React.useState('');
+
+  const getAncestry = (execution: IExecution): Promise<IExecution[]> => {
+    const youngest = ancestryRef.current[ancestryRef.current.length - 1];
+    // youngest and execution don't match only during navigating between executions
+    const navigating = execution && youngest && youngest.id !== execution.id;
+    const lineage = traverseLineage(execution);
+
+    // used when navigating between executions so clicking between generations is snappy
+    const ancestryCache = ancestryRef.current.reduce((acc, curr) => set(acc, curr.id, curr), {
+      [execution.id]: execution,
+    });
+
+    // used to skip re-fetching ancestors that are no longer active
+    const inactiveCache = ancestryRef.current
+      .filter((ancestor) => !ancestor.isActive)
+      .reduce((acc, curr) => set(acc, curr.id, curr), { [execution.id]: execution });
+
+    const cache = navigating ? ancestryCache : inactiveCache;
+
+    return Promise.all(
+      lineage.map((generation) =>
+        cache[generation] ? Promise.resolve(cache[generation]) : getAndTransformExecution(generation, app),
+      ),
+    ).then((ancestry) => {
+      ancestryRef.current = ancestry;
+      return ancestry;
+    });
+  };
 
   // responsible for getting execution whenever executionId (route param) changes
   const { result: execution, status: getExecutionStatus, refresh: refreshExecution } = useLatestPromise(
@@ -51,8 +100,14 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
     [executionId],
   );
 
-  // Manages the scheduled refresh until the execution no is active har har
-  const someActive = [execution].filter((x) => x).some((x) => x.isActive);
+  // responsible for getting ancestry whenever execution changes or refreshes
+  const { result: ancestry } = useData(() => getAncestry(execution), [], [execution, executionId]);
+
+  // Manages the scheduled refresh until the entire lineage has no active executions
+  const someActive = [execution]
+    .concat(ancestry)
+    .filter((x) => x)
+    .some((x) => x.isActive);
   useEffect(() => {
     const subscription = someActive && scheduler.subscribe(() => refreshExecution());
 
@@ -71,6 +126,10 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
           stateChange.toParams.executionId !== stateChange.fromParams.executionId)
       ) {
         setExecutionId(stateChange.toParams.executionId);
+        const lineage = traverseLineage(execution);
+        if (lineage.includes(stateChange.toParams.executionId)) {
+          setTransitioningToAncestor(stateChange.toParams.executionId);
+        }
       }
     });
     return () => {
@@ -78,11 +137,22 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
     };
   }, [execution]);
 
+  // Responsible for clearing transitioningToAncestor (allow rendering main execution again)
+  useEffect(() => {
+    if (transitioningToAncestor === execution?.id) {
+      setTransitioningToAncestor('');
+    }
+  }, [transitioningToAncestor, execution?.id]);
+
+  // Responsible for propagating showDurations back to the filterModel
+  React.useEffect(() => {
+    ExecutionState.filterModel.asFilterModel.sortFilter.showDurations = showDurations;
+  }, [showDurations]);
+
   const { result: pipelineConfigs } = useLatestPromise<IPipeline[]>(() => {
     app.pipelineConfigs.activate();
     return app.pipelineConfigs.ready();
   }, []);
-
   const pipelineConfig =
     pipelineConfigs && execution && pipelineConfigs.find((p: IPipeline) => p.id === execution.pipelineConfigId);
 
@@ -120,6 +190,24 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
 
   const defaultExecutionParams = { application: app.name, executionId: execution?.id || '' };
   const executionParams = ReactInjector.$state.params.executionParams || defaultExecutionParams;
+
+  let truncateAncestry = ancestry.length - 1;
+  if (executionId && execution && executionId !== execution.id) {
+    // We are on the eager end of a transition to a different executionId
+    const idx = ancestry.findIndex((a) => a.id === executionId);
+    if (idx > -1) {
+      // If the incoming executionId is part of the ancestry, we can eagerly truncate the ancestry at that generation
+      // for a smoother experience during the transition. That is, if we are navigating from e to b in [a, b, c, d, e],
+      // [a, b, c, d] is rendered as part of the ancestry, while [e] is the main execution.
+      // We eagerly truncate the ancestry to [a, b] since that will be the end state anyways (transitioningToAncestor hides [e])
+      // Once [b] loads, the ancestry is recomputed to just [a] and the rendered executions remain [a, b]
+      truncateAncestry = idx + 1;
+    }
+  }
+
+  // Eagerly hide the main execution when we are transitioning to an ancestor and are not rendering that ancestor
+  // Once we've reached it, an effect will re-setTransitioningToAncestor to blank
+  const hideMainExecution = !(!transitioningToAncestor || transitioningToAncestor === execution.id);
 
   return (
     <div style={{ width: '100%', paddingTop: 0 }}>
@@ -164,7 +252,25 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
           </div>
         </div>
       )}
-      {execution && (
+      {execution &&
+        ancestry
+          .filter((_ancestor, i) => i < truncateAncestry)
+          .map((ancestor, i) => (
+            <div className="row" key={ancestor.id}>
+              <div className="col-md-10 col-md-offset-1 executions">
+                <Execution
+                  key={ancestor.id}
+                  execution={ancestor}
+                  descendantExecutionId={i < ancestry.length - 1 ? ancestry[i + 1].id : execution.id}
+                  application={app}
+                  pipelineConfig={null}
+                  standalone={true}
+                  showDurations={showDurations}
+                />
+              </div>
+            </div>
+          ))}
+      {execution && !hideMainExecution && (
         <div className="row">
           <div className="col-md-10 col-md-offset-1 executions">
             <Execution
