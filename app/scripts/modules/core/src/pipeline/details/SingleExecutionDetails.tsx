@@ -1,4 +1,4 @@
-import { UISref } from '@uirouter/react';
+import { UISref, useCurrentStateAndParams } from '@uirouter/react';
 import { set } from 'lodash';
 import React, { useEffect, useState } from 'react';
 import ReactGA from 'react-ga';
@@ -56,29 +56,27 @@ function traverseLineage(execution: IExecution): string[] {
 }
 
 export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
-  const ancestryRef = React.useRef([] as IExecution[]);
   const scheduler = SchedulerFactory.createScheduler(5000);
-  const { $state, stateEvents } = ReactInjector;
   const { sortFilter } = ExecutionState.filterModel.asFilterModel;
   const { app } = props;
 
   const [showDurations, setShowDurations] = useState(sortFilter.showDurations);
-  const [executionId, setExecutionId] = useState($state.params.executionId);
-  const [transitioningToAncestor, setTransitioningToAncestor] = React.useState('');
+  const { params } = useCurrentStateAndParams();
+  const { executionId } = params;
 
   const getAncestry = (execution: IExecution): Promise<IExecution[]> => {
-    const youngest = ancestryRef.current[ancestryRef.current.length - 1];
+    const youngest = ancestry[ancestry.length - 1];
     // youngest and execution don't match only during navigating between executions
     const navigating = execution && youngest && youngest.id !== execution.id;
     const lineage = traverseLineage(execution);
 
     // used when navigating between executions so clicking between generations is snappy
-    const ancestryCache = ancestryRef.current.reduce((acc, curr) => set(acc, curr.id, curr), {
+    const ancestryCache = ancestry.reduce((acc, curr) => set(acc, curr.id, curr), {
       [execution.id]: execution,
     });
 
     // used to skip re-fetching ancestors that are no longer active
-    const inactiveCache = ancestryRef.current
+    const inactiveCache = ancestry
       .filter((ancestor) => !ancestor.isActive)
       .reduce((acc, curr) => set(acc, curr.id, curr), { [execution.id]: execution });
 
@@ -88,10 +86,7 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
       lineage.map((generation) =>
         cache[generation] ? Promise.resolve(cache[generation]) : getAndTransformExecution(generation, app),
       ),
-    ).then((ancestry) => {
-      ancestryRef.current = ancestry;
-      return ancestry;
-    });
+    );
   };
 
   // responsible for getting execution whenever executionId (route param) changes
@@ -99,6 +94,9 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
     () => getAndTransformExecution(executionId, app),
     [executionId],
   );
+
+  const lineage = traverseLineage(execution);
+  const transitioningToAncestor = lineage.includes(executionId) && executionId !== execution?.id ? executionId : '';
 
   // responsible for getting ancestry whenever execution changes or refreshes
   const { result: ancestry } = useData(() => getAncestry(execution), [], [execution, executionId]);
@@ -116,39 +114,6 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
     };
   }, [someActive]);
 
-  // Responsible for listening to state changes and updating executionId
-  useEffect(() => {
-    const subscription = stateEvents.stateChangeSuccess.subscribe((stateChange: ISingleExecutionRouterStateChange) => {
-      if (
-        !stateChange.to.name.includes('pipelineConfig') &&
-        !stateChange.to.name.includes('executions') &&
-        (stateChange.toParams.application !== stateChange.fromParams.application ||
-          stateChange.toParams.executionId !== stateChange.fromParams.executionId)
-      ) {
-        setExecutionId(stateChange.toParams.executionId);
-        const lineage = traverseLineage(execution);
-        if (lineage.includes(stateChange.toParams.executionId)) {
-          setTransitioningToAncestor(stateChange.toParams.executionId);
-        }
-      }
-    });
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [execution]);
-
-  // Responsible for clearing transitioningToAncestor (allow rendering main execution again)
-  useEffect(() => {
-    if (transitioningToAncestor === execution?.id) {
-      setTransitioningToAncestor('');
-    }
-  }, [transitioningToAncestor, execution?.id]);
-
-  // Responsible for propagating showDurations back to the filterModel
-  React.useEffect(() => {
-    ExecutionState.filterModel.asFilterModel.sortFilter.showDurations = showDurations;
-  }, [showDurations]);
-
   const { result: pipelineConfigs } = useLatestPromise<IPipeline[]>(() => {
     app.pipelineConfigs.activate();
     return app.pipelineConfigs.ready();
@@ -156,14 +121,10 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
   const pipelineConfig =
     pipelineConfigs && execution && pipelineConfigs.find((p: IPipeline) => p.id === execution.pipelineConfigId);
 
-  // Responsible for propagating showDurations changes to the filterModel
-  useEffect(() => {
-    ExecutionState.filterModel.asFilterModel.sortFilter.showDurations = showDurations;
-  }, [showDurations]);
-
   const showDurationsChanged = (event: React.ChangeEvent<HTMLInputElement>): void => {
     const checked = event.target.checked;
     setShowDurations(checked);
+    ExecutionState.filterModel.asFilterModel.sortFilter.showDurations = showDurations;
     ReactGA.event({ category: 'Pipelines', action: 'Toggle Durations', label: checked.toString() });
   };
 
@@ -176,14 +137,14 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
     e.stopPropagation();
   };
 
-  const rerunExecution = (execution: IExecution) => {
+  const rerunExecution = (execution: IExecution, application: Application, pipeline: IPipeline) => {
     ManualExecutionModal.show({
-      pipeline: pipelineConfig,
-      application: app,
+      pipeline,
+      application,
       trigger: execution.trigger,
     }).then((command) => {
       const { executionService } = ReactInjector;
-      executionService.startAndMonitorPipeline(app, command.pipelineName, command.trigger);
+      executionService.startAndMonitorPipeline(application, command.pipelineName, command.trigger);
       ReactInjector.$state.go('^.^.executions');
     });
   };
@@ -283,7 +244,7 @@ export function SingleExecutionDetails(props: ISingleExecutionDetailsProps) {
               onRerun={
                 pipelineConfig &&
                 (() => {
-                  rerunExecution(execution);
+                  rerunExecution(execution, app, pipelineConfig);
                 })
               }
             />
